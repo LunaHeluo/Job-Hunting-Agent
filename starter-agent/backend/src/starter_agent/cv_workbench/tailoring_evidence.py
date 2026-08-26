@@ -35,6 +35,22 @@ _IGNORED_TERMS = {
     "熟悉",
     "掌握",
 }
+_ENGLISH_ACTION_TERMS = {
+    "build",
+    "building",
+    "develop",
+    "developing",
+    "deliver",
+    "delivering",
+    "drive",
+    "driving",
+    "responsible",
+    "support",
+    "supporting",
+}
+_ENGLISH_ALIASES = {
+    "apis": "api",
+}
 _MIN_CANDIDATE_COVERAGE = 0.40
 
 
@@ -97,10 +113,12 @@ class ResumeEvidenceSelector:
         markdown: str,
     ) -> ResumeEvidenceSelection:
         query_terms = self._query_terms(requirement_text)
+        if not query_terms:
+            return ResumeEvidenceSelection((), frozenset(), ())
         matches = self.retriever.retrieve(
             scope,
             knowledge_base_id,
-            requirement_text,
+            self._retrieval_query(query_terms),
             top_k=5,
             document_ids=[document_id],
             document_types=["resume"],
@@ -186,9 +204,11 @@ class ResumeEvidenceSelector:
 
     @staticmethod
     def _query_terms(requirement_text: str) -> tuple[str, ...]:
-        terms: list[str] = [
-            value.casefold() for value in _ENGLISH_TERM.findall(requirement_text)
-        ]
+        terms: list[str] = []
+        for value in _ENGLISH_TERM.findall(requirement_text):
+            normalized = _ENGLISH_ALIASES.get(value.casefold(), value.casefold())
+            if normalized not in _ENGLISH_ACTION_TERMS:
+                terms.append(normalized)
         for run in _CHINESE_RUN.findall(requirement_text):
             for value in _CHINESE_SEPARATOR.split(run):
                 cleaned = _TRAILING_BOILERPLATE.sub(
@@ -197,6 +217,16 @@ class ResumeEvidenceSelector:
                 if len(cleaned) >= 2 and cleaned not in _IGNORED_TERMS:
                     terms.append(cleaned)
         return tuple(dict.fromkeys(terms))
+
+    @staticmethod
+    def _retrieval_query(query_terms: tuple[str, ...]) -> str:
+        english = tuple(
+            term for term in query_terms if term.isascii() and term[0].isalpha()
+        )
+        if english:
+            return max(english, key=len)
+        longest = max(query_terms, key=len)
+        return longest[:2]
 
     def _blocks(self, markdown: str) -> tuple[_ResumeBlock, ...]:
         normalized = self.normalizer.normalize(markdown)

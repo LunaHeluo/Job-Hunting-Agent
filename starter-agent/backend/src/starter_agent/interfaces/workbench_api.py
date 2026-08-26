@@ -21,6 +21,7 @@ from starter_agent.cv_workbench.contracts import (
     Job,
     JobSnapshot,
     MatchAnalysis,
+    MatchStatus,
     MergeDecisionType,
     MergeProposal,
     Resume,
@@ -50,6 +51,7 @@ from starter_agent.cv_workbench.jd_ingestion import (
 from starter_agent.cv_workbench.matching import (
     AnalyzeCommand,
     CandidateRequirement,
+    RULE_VERSION,
     deterministic_requirements,
 )
 from starter_agent.cv_workbench.resume_import import ResumeImportCommand
@@ -74,6 +76,7 @@ from starter_agent.interfaces.capabilities_api import (
     ManagementPrincipal,
     get_management_principal,
 )
+from starter_agent.knowledge.models import KnowledgeScope
 
 
 class ApiModel(BaseModel):
@@ -412,6 +415,13 @@ def _translate(error: Exception) -> WorkbenchApiError:
     if isinstance(error, ReferenceConflictError):
         return WorkbenchApiError("reference_conflict", str(error), status_code=409)
     code = getattr(error, "code", None) or type(error).__name__.casefold()
+    if code == "tailoring_analysis_upgrade_required":
+        return WorkbenchApiError(
+            str(code),
+            "Evidence matching has been upgraded; reanalyze once before tailoring.",
+            status_code=409,
+            recovery_action="reanalyze_with_current_rule",
+        )
     return WorkbenchApiError(str(code), str(error), status_code=422)
 
 
@@ -833,19 +843,47 @@ def create_workbench_router(
         subject = principal(actor); runtime = runtime_provider()
         version = _call(runtime.store.get, ResumeVersion, body.resume_version_id, principal=subject)
         snapshot = _call(runtime.store.get, JobSnapshot, body.job_snapshot_id, principal=subject)
+        _call(runtime.store.assert_entity_in_workspace, version.version_id, body.workspace_id, principal=subject)
+        _call(runtime.store.assert_entity_in_workspace, snapshot.snapshot_id, body.workspace_id, principal=subject)
+        reusable = tuple(
+            item
+            for item in _all(runtime, MatchAnalysis, subject)
+            if item.workspace_id == body.workspace_id
+            and item.resume_version_id == version.version_id
+            and item.resume_content_sha256 == version.content.content_sha256
+            and item.job_snapshot_id == snapshot.snapshot_id
+            and item.job_content_sha256 == snapshot.content.content_sha256
+            and item.rule_version == RULE_VERSION
+            and item.status in {MatchStatus.VALIDATED, MatchStatus.PARTIAL}
+        )
+        if reusable:
+            analysis = max(
+                reusable,
+                key=lambda item: (item.created_at, item.analysis_id),
+            )
+            return analysis.model_dump(mode="json") | {
+                "reused": True,
+                "rule_upgrade_required": False,
+            }
         resume_text = _call(runtime.versions.content.read, version.content, principal=subject, workspace_id=body.workspace_id)
         job_text = _call(runtime.versions.content.read, snapshot.content, principal=subject, workspace_id=body.workspace_id)
         if not (version.content.knowledge_base_id and version.content.document_id and version.content.document_version_id):
             raise WorkbenchApiError("resume_evidence_not_published", "Confirmed resume evidence is unavailable.", status_code=409)
-        from starter_agent.cv_workbench.contracts import EvidenceReference
-        evidence = EvidenceReference(
-            chunk_id=version.version_id,
-            source_ref=f"knowledge://{version.content.knowledge_base_id}/{version.content.document_id}/{version.content.document_version_id}",
-            content_sha256=version.content.content_sha256,
+        requirements = _call(
+            deterministic_requirements,
+            resume_text,
+            job_text,
+            selector=runtime.evidence_selector,
+            scope=KnowledgeScope(user_id=subject, project_id=body.workspace_id),
+            knowledge_base_id=UUID(version.content.knowledge_base_id),
+            document_id=UUID(version.content.document_id),
         )
-        requirements = _call(deterministic_requirements, resume_text, job_text, evidence=evidence)
         command = AnalyzeCommand(**body.model_dump(), requirements=requirements, complete=True)
-        return _call(runtime.matches.analyze, command, principal=subject)
+        analysis = _call(runtime.matches.analyze, command, principal=subject)
+        return analysis.model_dump(mode="json") | {
+            "reused": False,
+            "rule_upgrade_required": False,
+        }
 
     @router.get("/match-analyses")
     def list_matches(workspace_id: str, limit: int = 50, cursor: str | None = None, actor: ManagementPrincipal = Depends(get_management_principal)):
