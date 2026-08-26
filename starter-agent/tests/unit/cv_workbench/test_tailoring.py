@@ -114,10 +114,13 @@ class FakeContentRepository:
 class StaticGenerator:
     def __init__(self) -> None:
         self.result = None
+        self.results = []
         self.calls = []
 
     async def generate(self, request):
         self.calls.append(request)
+        if self.results:
+            return self.results.pop(0)
         return self.result
 
 
@@ -414,6 +417,57 @@ async def test_tailoring_rejects_unknown_evidence_and_new_numeric_claim(
     assert set(result.rejected_reasons) == {
         "new_numeric_claim",
         "unknown_evidence",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tailoring_retries_empty_output_with_validation_feedback(
+    tmp_path,
+) -> None:
+    module, service, fake, analysis, draft, store, block_id = (
+        setup_tailoring_service(tmp_path)
+    )
+    fake.results = [
+        module.TailoringGenerationResult(
+            reflection=module.ReflectionResult(notes="首次未生成候选"),
+            candidates=(),
+        ),
+        module.TailoringGenerationResult(
+            reflection=module.ReflectionResult(notes="已根据反馈修复"),
+            candidates=(
+                module.GeneratedTailoringCandidate(
+                    block_id=block_id,
+                    proposed_text="构建 Python 与 FastAPI 服务",
+                    reason="贴合已验证岗位要求",
+                    requirement_ids=("req_python",),
+                    evidence_ids=("ev_1",),
+                    risk="请确认职责边界",
+                ),
+            ),
+        ),
+    ]
+
+    result = await service.generate_candidates(
+        module.TailoringCommand(
+            workspace_id="ws_demo",
+            analysis_id=analysis.analysis_id,
+            draft_id=draft.draft_id,
+        ),
+        principal=PRINCIPAL,
+    )
+
+    assert len(fake.calls) == 2
+    assert fake.calls[0].attempt == 1
+    assert fake.calls[1].attempt == 2
+    assert fake.calls[1].validation_feedback == ("empty_model_output",)
+    assert result.attempts == 2
+    assert len(result.items) == 1
+    events = store.list_events(draft.draft_id, principal=PRINCIPAL)
+    assert events[-1].event_type == "tailoring_generation_completed"
+    assert events[-1].payload == {
+        "attempts": 2,
+        "created_count": 1,
+        "rejected_reasons": ["empty_model_output"],
     }
 
 

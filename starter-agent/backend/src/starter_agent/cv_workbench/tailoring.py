@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Protocol
 
@@ -14,8 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starter_agent.domain.models import Message
 from starter_agent.providers.base import Provider
 from starter_agent.cv_workbench.contracts import (
+    EvidenceReference,
     MatchAnalysis,
     MatchStatus,
+    RequirementResult,
     RequirementVerdict,
     ResumeDraft,
     Suggestion,
@@ -60,6 +63,8 @@ class TailoringGenerationRequest(BaseModel):
     requirements: tuple[dict[str, str], ...]
     blocks: tuple[TailoringBlock, ...]
     evidence: tuple[TailoringEvidence, ...]
+    attempt: int = Field(default=1, ge=1, le=2)
+    validation_feedback: tuple[str, ...] = ()
 
 
 class GeneratedTailoringCandidate(BaseModel):
@@ -99,7 +104,9 @@ _REFLECTION_PROMPT = """你是简历证据反思审核员。
 _WRITER_PROMPT = """你是证据约束的简历撰写助手。
 只能改写输入中给出的 block，且只能使用给出的 requirement_id 与 evidence_id。
 禁止新增输入证据中没有的技能、角色、年限、数字或结果。每个 block 最多一条候选，
-最多返回 8 条。请参考反思结果并保持职责边界。只输出 JSON：
+最多返回 8 条。请参考反思结果并保持职责边界。如果 validation_feedback 非空，
+必须修正上次对应问题，并原样使用输入中提供的 ID；只要存在安全改写空间，至少返回一条。
+如果确实无法安全改写，才返回空 candidates。只输出 JSON：
 {"candidates":[{"block_id":"", "proposed_text":"", "reason":"",
 "requirement_ids":[""], "evidence_ids":[""], "risk":""}]}
 """
@@ -204,6 +211,7 @@ class TailoringResult(BaseModel):
     reflection: ReflectionResult
     reused: bool = False
     rejected_reasons: tuple[str, ...] = ()
+    attempts: int = Field(default=1, ge=1, le=2)
 
 
 @dataclass(frozen=True)
@@ -334,27 +342,99 @@ class TailoredResumeService:
         if not request_evidence:
             raise TailoringServiceError("tailoring_no_verified_evidence")
 
-        generated = await self.generator.generate(
-            TailoringGenerationRequest(
-                analysis_id=analysis.analysis_id,
-                draft_id=draft.draft_id,
-                draft_revision=draft.revision,
-                requirements=requirements,
-                blocks=tuple(
-                    TailoringBlock(
-                        block_id=item.block_id,
-                        original_text=item.text,
-                    )
-                    for item in used_blocks.values()
-                ),
-                evidence=tuple(request_evidence),
-            )
+        base_request = TailoringGenerationRequest(
+            analysis_id=analysis.analysis_id,
+            draft_id=draft.draft_id,
+            draft_revision=draft.revision,
+            requirements=requirements,
+            blocks=tuple(
+                TailoringBlock(
+                    block_id=item.block_id,
+                    original_text=item.text,
+                )
+                for item in used_blocks.values()
+            ),
+            evidence=tuple(request_evidence),
         )
         positive_by_id = {item.requirement_id: item for item in positive}
+        block_by_id = {item.block_id: item for item in used_blocks.values()}
+        request_evidence_by_id = {
+            item.evidence_id: item for item in request_evidence
+        }
+        created: tuple[Suggestion, ...] = ()
+        rejected: list[str] = []
+        feedback: tuple[str, ...] = ()
+        reflection = ReflectionResult()
+        attempts = 0
+        for attempt in (1, 2):
+            generated = await self.generator.generate(
+                base_request.model_copy(
+                    update={
+                        "attempt": attempt,
+                        "validation_feedback": feedback,
+                    }
+                )
+            )
+            attempts = attempt
+            reflection = generated.reflection
+            created, attempt_rejected = self._validate_and_create(
+                generated=generated,
+                analysis=analysis,
+                draft=draft,
+                workspace_id=command.workspace_id,
+                principal=principal,
+                positive_by_id=positive_by_id,
+                evidence_by_id=evidence_by_id,
+                aligned_by_id=aligned_by_id,
+                request_evidence_by_id=request_evidence_by_id,
+                block_by_id=block_by_id,
+            )
+            if not generated.candidates:
+                attempt_rejected = (*attempt_rejected, "empty_model_output")
+            for reason in attempt_rejected:
+                if reason not in rejected:
+                    rejected.append(reason)
+            if created:
+                break
+            feedback = tuple(attempt_rejected) or ("empty_model_output",)
+
+        self.store.append_event(
+            draft.draft_id,
+            principal=principal,
+            event_type="tailoring_generation_completed",
+            payload={
+                "attempts": attempts,
+                "created_count": len(created),
+                "rejected_reasons": rejected,
+            },
+            occurred_at=datetime.now(UTC),
+        )
+        return TailoringResult(
+            draft_id=draft.draft_id,
+            draft_revision=draft.revision,
+            items=created,
+            reflection=reflection,
+            rejected_reasons=tuple(rejected),
+            attempts=attempts,
+        )
+
+    def _validate_and_create(
+        self,
+        *,
+        generated: TailoringGenerationResult,
+        analysis: MatchAnalysis,
+        draft: ResumeDraft,
+        workspace_id: str,
+        principal: str,
+        positive_by_id: dict[str, RequirementResult],
+        evidence_by_id: dict[str, EvidenceReference],
+        aligned_by_id: dict[str, _AlignedBlock],
+        request_evidence_by_id: dict[str, TailoringEvidence],
+        block_by_id: dict[str, _AlignedBlock],
+    ) -> tuple[tuple[Suggestion, ...], tuple[str, ...]]:
         created = []
         rejected = []
         candidate_blocks = set()
-        block_by_id = {item.block_id: item for item in used_blocks.values()}
         for candidate in generated.candidates[:8]:
             reasons = []
             block = block_by_id.get(candidate.block_id)
@@ -378,9 +458,6 @@ class TailoredResumeService:
                 for item in candidate.evidence_ids
             ):
                 reasons.append("evidence_block_mismatch")
-            request_evidence_by_id = {
-                item.evidence_id: item for item in request_evidence
-            }
             if any(
                 item in request_evidence_by_id
                 and request_evidence_by_id[item].requirement_id
@@ -431,18 +508,12 @@ class TailoredResumeService:
                         risk=candidate.risk,
                         allow_partial_analysis=analysis.status == MatchStatus.PARTIAL,
                     ),
-                    workspace_id=command.workspace_id,
+                    workspace_id=workspace_id,
                     principal=principal,
                 )
             )
             candidate_blocks.add(candidate.block_id)
-        return TailoringResult(
-            draft_id=draft.draft_id,
-            draft_revision=draft.revision,
-            items=tuple(created),
-            reflection=generated.reflection,
-            rejected_reasons=tuple(rejected),
-        )
+        return tuple(created), tuple(rejected)
 
     def _all_suggestions(self, principal: str) -> tuple[Suggestion, ...]:
         values = []
