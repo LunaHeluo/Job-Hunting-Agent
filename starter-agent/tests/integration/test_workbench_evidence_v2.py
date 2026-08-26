@@ -8,6 +8,11 @@ from fastapi.testclient import TestClient
 
 from starter_agent.cv_workbench.contracts import MatchAnalysis, ResumeVersion
 from starter_agent.cv_workbench.runtime import create_workbench_runtime
+from starter_agent.cv_workbench.tailoring import (
+    GeneratedTailoringCandidate,
+    ReflectionResult,
+    TailoringGenerationResult,
+)
 from starter_agent.interfaces.capabilities_api import (
     ManagementPrincipal,
     get_management_principal,
@@ -38,6 +43,35 @@ class NeverCalledTailoringGenerator:
     async def generate(self, request):
         self.calls += 1
         raise AssertionError("legacy analysis must be rejected before provider call")
+
+
+class ReactTailoringGenerator:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, request):
+        self.calls += 1
+        evidence = next(item for item in request.evidence if "React" in item.quote)
+        block = next(
+            item for item in request.blocks if evidence.quote in item.original_text
+        )
+        return TailoringGenerationResult(
+            reflection=ReflectionResult(notes="React evidence verified"),
+            candidates=(
+                GeneratedTailoringCandidate(
+                    block_id=block.block_id,
+                    proposed_text=block.original_text.replace(
+                        "使用 React",
+                        "基于 React",
+                        1,
+                    ),
+                    reason="突出已验证的前端与系统联调经历。",
+                    requirement_ids=(evidence.requirement_id,),
+                    evidence_ids=(evidence.evidence_id,),
+                    risk="请确认措辞仍符合原始职责边界。",
+                ),
+            ),
+        )
 
 
 def make_client(tmp_path: Path, *, tailoring_generator=None):
@@ -228,5 +262,73 @@ def test_tailoring_endpoint_requires_one_time_upgrade_for_v1_analysis(
             "reanalyze_with_current_rule"
         )
         assert generator.calls == 0
+    finally:
+        runtime.close()
+
+
+def test_react_evidence_generates_draft_only_tailoring_and_reuses_results(
+    tmp_path: Path,
+) -> None:
+    generator = ReactTailoringGenerator()
+    client, runtime = make_client(tmp_path, tailoring_generator=generator)
+    try:
+        snapshot_id = create_match_fixture(client)
+        evaluated = evaluate(client, snapshot_id, suffix="tailoring")
+        assert evaluated.status_code == 201, evaluated.text
+        analysis = evaluated.json()
+        version_before = client.get(
+            "/v1/workbench/resume-versions/rv_evidence_v2"
+        ).json()
+        draft = client.post(
+            "/v1/workbench/resume-versions/rv_evidence_v2/drafts",
+            json={
+                "draft_id": "rd_evidence_v2_tailoring",
+                "workspace_id": "ws_evidence_v2",
+                "branch_id": "rb_evidence_v2",
+            },
+        )
+        assert draft.status_code == 201, draft.text
+
+        generated = client.post(
+            f"/v1/workbench/match-analyses/{analysis['analysis_id']}/tailored-resume-candidates",
+            json={
+                "workspace_id": "ws_evidence_v2",
+                "draft_id": "rd_evidence_v2_tailoring",
+            },
+        )
+        reused = client.post(
+            f"/v1/workbench/match-analyses/{analysis['analysis_id']}/tailored-resume-candidates",
+            json={
+                "workspace_id": "ws_evidence_v2",
+                "draft_id": "rd_evidence_v2_tailoring",
+            },
+        )
+
+        assert generated.status_code == 201, generated.text
+        assert reused.status_code == 201, reused.text
+        assert generated.json()["reused"] is False
+        assert reused.json()["reused"] is True
+        assert generator.calls == 1
+        suggestion = generated.json()["items"][0]
+        assert suggestion["change_type"] == "ai_tailor_v1"
+        assert "React" in suggestion["resume_evidence"][0]["quote"]
+        accepted = client.post(
+            "/v1/workbench/suggestions/batch-decisions",
+            json={
+                "workspace_id": "ws_evidence_v2",
+                "accept_ids": [suggestion["suggestion_id"]],
+                "reject_ids": [],
+                "edited_text_by_id": {
+                    suggestion["suggestion_id"]: suggestion["proposed_text"]
+                },
+            },
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["draft"]["revision"] == 2
+        version_after = client.get(
+            "/v1/workbench/resume-versions/rv_evidence_v2"
+        ).json()
+        assert version_after["revision"] == version_before["revision"]
+        assert version_after["content"] == version_before["content"]
     finally:
         runtime.close()
