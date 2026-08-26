@@ -3,13 +3,28 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
+from dataclasses import dataclass
+from hashlib import sha256
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from starter_agent.domain.models import Message
 from starter_agent.providers.base import Provider
+from starter_agent.cv_workbench.contracts import (
+    MatchAnalysis,
+    MatchStatus,
+    RequirementVerdict,
+    ResumeDraft,
+    Suggestion,
+)
+from starter_agent.cv_workbench.suggestions import (
+    SuggestionCommand,
+    SuggestionService,
+)
+from starter_agent.cv_workbench.versioning import ResumeVersionService
 
 
 PROMPT_VERSION = "tailored-resume-v1"
@@ -171,3 +186,278 @@ class ProviderTailoredResumeGenerator:
             )
         except (TypeError, ValidationError) as error:
             raise TailoringServiceError("tailoring_output_invalid") from error
+
+
+@dataclass(frozen=True)
+class TailoringCommand:
+    workspace_id: str
+    analysis_id: str
+    draft_id: str
+
+
+class TailoringResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    draft_id: str
+    draft_revision: int
+    items: tuple[Suggestion, ...] = ()
+    reflection: ReflectionResult
+    reused: bool = False
+    rejected_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _AlignedBlock:
+    block_id: str
+    text: str
+
+
+_NUMBER = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?%?")
+
+
+class TailoredResumeService:
+    def __init__(
+        self,
+        *,
+        store,
+        versions: ResumeVersionService,
+        suggestions: SuggestionService,
+        generator: TailoredResumeGenerator,
+    ) -> None:
+        self.store = store
+        self.versions = versions
+        self.suggestions = suggestions
+        self.generator = generator
+
+    async def generate_candidates(
+        self,
+        command: TailoringCommand,
+        *,
+        principal: str,
+    ) -> TailoringResult:
+        analysis = self.store.get(
+            MatchAnalysis,
+            command.analysis_id,
+            principal=principal,
+        )
+        draft = self.store.get(
+            ResumeDraft,
+            command.draft_id,
+            principal=principal,
+        )
+        self.store.assert_entity_in_workspace(
+            draft.draft_id,
+            command.workspace_id,
+            principal=principal,
+        )
+        if analysis.workspace_id != command.workspace_id:
+            raise TailoringServiceError("tailoring_workspace_mismatch")
+        if analysis.status not in {MatchStatus.VALIDATED, MatchStatus.PARTIAL}:
+            raise TailoringServiceError("tailoring_analysis_not_ready")
+        if draft.base_version_id != analysis.resume_version_id:
+            raise TailoringServiceError("tailoring_draft_base_mismatch")
+
+        existing = tuple(
+            item
+            for item in self._all_suggestions(principal)
+            if item.analysis_id == analysis.analysis_id
+            and item.target_draft_id == draft.draft_id
+            and item.target_draft_revision == draft.revision
+            and item.change_type == "ai_tailor_v1"
+        )
+        if existing:
+            return TailoringResult(
+                draft_id=draft.draft_id,
+                draft_revision=draft.revision,
+                items=existing,
+                reflection=ReflectionResult(
+                    notes="已复用同一 Draft revision 的定制建议"
+                ),
+                reused=True,
+            )
+
+        markdown = self.versions.content.read(
+            draft.content,
+            principal=principal,
+            workspace_id=command.workspace_id,
+        )
+        normalized = self.versions.normalizer.normalize(markdown)
+        lines = normalized.markdown.splitlines()
+        blocks = tuple(
+            _AlignedBlock(
+                block_id=item.block_id,
+                text="\n".join(lines[item.start_line - 1 : item.end_line]),
+            )
+            for item in normalized.blocks
+        )
+        positive = tuple(
+            item
+            for item in analysis.requirements
+            if item.verdict
+            in {RequirementVerdict.MATCHED, RequirementVerdict.PARTIAL}
+        )
+        requirements = tuple(
+            {
+                "requirement_id": item.requirement_id,
+                "original_text": item.original_text,
+            }
+            for item in positive
+        )
+        evidence_by_id = {}
+        aligned_by_id = {}
+        request_evidence = []
+        used_blocks = {}
+        for requirement in positive:
+            for reference in requirement.evidence:
+                quote = self._clean(reference.quote or "")
+                block = next(
+                    (
+                        item
+                        for item in blocks
+                        if quote and quote in self._clean(item.text)
+                    ),
+                    None,
+                )
+                if block is None:
+                    continue
+                evidence_id = f"ev_{len(request_evidence) + 1}"
+                request_evidence.append(
+                    TailoringEvidence(
+                        evidence_id=evidence_id,
+                        requirement_id=requirement.requirement_id,
+                        quote=reference.quote or "",
+                    )
+                )
+                evidence_by_id[evidence_id] = reference
+                aligned_by_id[evidence_id] = block
+                used_blocks[block.block_id] = block
+        if not request_evidence:
+            raise TailoringServiceError("tailoring_no_verified_evidence")
+
+        generated = await self.generator.generate(
+            TailoringGenerationRequest(
+                analysis_id=analysis.analysis_id,
+                draft_id=draft.draft_id,
+                draft_revision=draft.revision,
+                requirements=requirements,
+                blocks=tuple(
+                    TailoringBlock(
+                        block_id=item.block_id,
+                        original_text=item.text,
+                    )
+                    for item in used_blocks.values()
+                ),
+                evidence=tuple(request_evidence),
+            )
+        )
+        positive_by_id = {item.requirement_id: item for item in positive}
+        created = []
+        rejected = []
+        candidate_blocks = set()
+        block_by_id = {item.block_id: item for item in used_blocks.values()}
+        for candidate in generated.candidates[:8]:
+            reasons = []
+            block = block_by_id.get(candidate.block_id)
+            if block is None:
+                reasons.append("unknown_block")
+            elif candidate.block_id in candidate_blocks:
+                reasons.append("duplicate_block")
+            requirement_ids = tuple(dict.fromkeys(candidate.requirement_ids))
+            if any(item not in positive_by_id for item in requirement_ids):
+                reasons.append("unknown_requirement")
+            selected_evidence = tuple(
+                evidence_by_id[item]
+                for item in candidate.evidence_ids
+                if item in evidence_by_id
+            )
+            if len(selected_evidence) != len(candidate.evidence_ids):
+                reasons.append("unknown_evidence")
+            if any(
+                item in aligned_by_id
+                and aligned_by_id[item].block_id != candidate.block_id
+                for item in candidate.evidence_ids
+            ):
+                reasons.append("evidence_block_mismatch")
+            request_evidence_by_id = {
+                item.evidence_id: item for item in request_evidence
+            }
+            if any(
+                item in request_evidence_by_id
+                and request_evidence_by_id[item].requirement_id
+                not in requirement_ids
+                for item in candidate.evidence_ids
+            ):
+                reasons.append("evidence_requirement_mismatch")
+            allowed_text = "\n".join(
+                [block.text if block else ""]
+                + [item.quote or "" for item in selected_evidence]
+            )
+            if self._numbers(candidate.proposed_text) - self._numbers(allowed_text):
+                reasons.append("new_numeric_claim")
+            if block is not None and self._clean(candidate.proposed_text) == self._clean(
+                block.text
+            ):
+                reasons.append("unchanged_text")
+            if reasons:
+                rejected.extend(reason for reason in reasons if reason not in rejected)
+                continue
+            digest = sha256(
+                "\0".join(
+                    (
+                        PROMPT_VERSION,
+                        analysis.analysis_id,
+                        draft.draft_id,
+                        str(draft.revision),
+                        candidate.block_id,
+                        *requirement_ids,
+                    )
+                ).encode("utf-8")
+            ).hexdigest()[:24]
+            created.append(
+                self.suggestions.create(
+                    SuggestionCommand(
+                        suggestion_id=f"sg_{digest}",
+                        analysis_id=analysis.analysis_id,
+                        target_version_id=analysis.resume_version_id,
+                        target_draft_id=draft.draft_id,
+                        target_draft_revision=draft.revision,
+                        block_id=candidate.block_id,
+                        original_text=block.text,
+                        proposed_text=candidate.proposed_text,
+                        change_type="ai_tailor_v1",
+                        reason=candidate.reason,
+                        resume_evidence=selected_evidence,
+                        requirement_ids=requirement_ids,
+                        risk=candidate.risk,
+                        allow_partial_analysis=analysis.status == MatchStatus.PARTIAL,
+                    ),
+                    workspace_id=command.workspace_id,
+                    principal=principal,
+                )
+            )
+            candidate_blocks.add(candidate.block_id)
+        return TailoringResult(
+            draft_id=draft.draft_id,
+            draft_revision=draft.revision,
+            items=tuple(created),
+            reflection=generated.reflection,
+            rejected_reasons=tuple(rejected),
+        )
+
+    def _all_suggestions(self, principal: str) -> tuple[Suggestion, ...]:
+        values = []
+        cursor = None
+        while True:
+            page = self.store.list(Suggestion, principal=principal, cursor=cursor)
+            values.extend(page.items)
+            if page.next_cursor is None:
+                return tuple(values)
+            cursor = page.next_cursor
+
+    @staticmethod
+    def _clean(value: str) -> str:
+        return " ".join(value.split())
+
+    @staticmethod
+    def _numbers(value: str) -> set[str]:
+        return {item.casefold() for item in _NUMBER.findall(value)}
