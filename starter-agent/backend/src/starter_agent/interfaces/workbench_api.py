@@ -28,6 +28,7 @@ from starter_agent.cv_workbench.contracts import (
     ResumeDraft,
     ResumeVersion,
     Suggestion,
+    SuggestionStatus,
     VersionViewPreference,
     Workspace,
 )
@@ -63,6 +64,7 @@ from starter_agent.cv_workbench.store import (
     WorkbenchStoreError,
 )
 from starter_agent.cv_workbench.suggestions import SuggestionCommand
+from starter_agent.cv_workbench.tailoring import TailoringCommand
 from starter_agent.cv_workbench.versioning import BlockPatch, VersioningError
 from starter_agent.cv_workbench.workspaces import (
     CreateWorkspaceCommand,
@@ -228,6 +230,13 @@ class SuggestionDecisionBody(ApiModel):
 class SuggestionGenerateBody(ApiModel):
     workspace_id: str
     draft_id: str
+
+
+class SuggestionBatchDecisionBody(ApiModel):
+    workspace_id: str
+    accept_ids: tuple[str, ...] = ()
+    reject_ids: tuple[str, ...] = ()
+    edited_text_by_id: dict[str, str] = Field(default_factory=dict)
 
 
 class MergeProposalBody(ApiModel):
@@ -871,6 +880,96 @@ def create_workbench_router(
             principal=principal(actor),
         )
         return {"items": values}
+
+    @router.post(
+        "/match-analyses/{analysis_id}/tailored-resume-candidates",
+        status_code=201,
+    )
+    async def generate_tailored_resume(
+        analysis_id: str,
+        body: SuggestionGenerateBody,
+        actor: ManagementPrincipal = Depends(get_management_principal),
+    ):
+        runtime = runtime_provider()
+        if runtime.tailoring is None:
+            raise WorkbenchApiError(
+                "tailoring_provider_unavailable",
+                "AI tailoring is not configured.",
+                status_code=503,
+                recovery_action="configure_model_provider",
+            )
+        try:
+            return await runtime.tailoring.generate_candidates(
+                TailoringCommand(
+                    workspace_id=body.workspace_id,
+                    analysis_id=analysis_id,
+                    draft_id=body.draft_id,
+                ),
+                principal=principal(actor),
+            )
+        except WorkbenchApiError:
+            raise
+        except (WorkbenchStoreError, VersioningError, ValueError, RuntimeError) as error:
+            raise _translate(error) from error
+
+    @router.post("/suggestions/batch-decisions")
+    def decide_suggestions_batch(
+        body: SuggestionBatchDecisionBody,
+        actor: ManagementPrincipal = Depends(get_management_principal),
+    ):
+        subject = principal(actor)
+        runtime = runtime_provider()
+        accept_ids = tuple(body.accept_ids)
+        reject_ids = tuple(body.reject_ids)
+        all_ids = accept_ids + reject_ids
+        if (
+            not all_ids
+            or len(set(all_ids)) != len(all_ids)
+            or not set(body.edited_text_by_id).issubset(accept_ids)
+        ):
+            raise WorkbenchApiError(
+                "invalid_suggestion_batch",
+                "Suggestion IDs must be unique and edits may target accepted IDs only.",
+            )
+        suggestions = tuple(
+            _call(runtime.store.get, Suggestion, item, principal=subject)
+            for item in all_ids
+        )
+        if any(item.status != SuggestionStatus.PENDING for item in suggestions):
+            raise WorkbenchApiError(
+                "suggestion_not_pending",
+                "All selected suggestions must still be pending.",
+                status_code=409,
+                recovery_action="reload_suggestions",
+            )
+        for item in suggestions:
+            _call(
+                runtime.store.assert_entity_in_workspace,
+                item.target_draft_id,
+                body.workspace_id,
+                principal=subject,
+            )
+
+        batch = None
+        if accept_ids:
+            batch = _call(
+                runtime.suggestions.apply_batch,
+                accept_ids,
+                workspace_id=body.workspace_id,
+                principal=subject,
+                edited_text_by_id=body.edited_text_by_id,
+                preserve_pending_ids=reject_ids,
+            )
+        rejected = tuple(
+            _call(runtime.suggestions.reject, item, principal=subject)
+            for item in reject_ids
+        )
+        return {
+            "draft": batch.draft if batch is not None else None,
+            "accepted_ids": batch.accepted_ids if batch is not None else (),
+            "rejected_ids": tuple(item.suggestion_id for item in rejected),
+            "invalidated_ids": batch.invalidated_ids if batch is not None else (),
+        }
 
     @router.post("/suggestions/{suggestion_id}/decisions")
     def decide_suggestion(suggestion_id: str, body: SuggestionDecisionBody, actor: ManagementPrincipal = Depends(get_management_principal)):

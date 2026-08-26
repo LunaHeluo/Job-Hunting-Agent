@@ -26,6 +26,10 @@ from starter_agent.cv_workbench.resume_import_adapters import (
 )
 from starter_agent.cv_workbench.store import SQLiteWorkbenchStore
 from starter_agent.cv_workbench.suggestions import SuggestionService
+from starter_agent.cv_workbench.tailoring import (
+    TailoredResumeGenerator,
+    TailoredResumeService,
+)
 from starter_agent.cv_workbench.version_adapters import (
     SessionKnowledgeVersionContentRepository,
 )
@@ -48,6 +52,7 @@ class WorkbenchRuntime:
     jobs: JobService
     matches: MatchService
     suggestions: SuggestionService
+    tailoring: TailoredResumeService | None
     exports: ExportService
     applications: ApplicationService
     interviews: InterviewReviewService
@@ -65,6 +70,7 @@ def create_workbench_runtime(
     project_root: Path,
     *,
     feature_provider: FeatureAvailabilityProvider | None = None,
+    tailoring_generator: TailoredResumeGenerator | None = None,
 ) -> WorkbenchRuntime:
     store = SQLiteWorkbenchStore(database_url, project_root)
     artifacts = SQLiteSessionStore(database_url, project_root)
@@ -80,6 +86,7 @@ def create_workbench_runtime(
     )
     content = SessionKnowledgeVersionContentRepository(artifacts, knowledge)
     versions = ResumeVersionService(store=store, content=content)
+    suggestions = SuggestionService(store=store, versions=versions)
     exports = ExportService(
         store=store,
         content=content,
@@ -110,7 +117,17 @@ def create_workbench_runtime(
             evidence_reader=knowledge_reader,
             evidence_bindings=evidence,
         ),
-        suggestions=SuggestionService(store=store, versions=versions),
+        suggestions=suggestions,
+        tailoring=(
+            TailoredResumeService(
+                store=store,
+                versions=versions,
+                suggestions=suggestions,
+                generator=tailoring_generator,
+            )
+            if tailoring_generator is not None
+            else None
+        ),
         exports=exports,
         applications=ApplicationService(store=store),
         interviews=InterviewReviewService(store=store),

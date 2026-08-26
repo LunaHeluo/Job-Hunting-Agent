@@ -296,9 +296,14 @@ class SuggestionService:
         *,
         workspace_id: str,
         principal: str,
+        edited_text_by_id: dict[str, str] | None = None,
+        preserve_pending_ids: tuple[str, ...] = (),
     ) -> BatchApplyResult:
         if not suggestion_ids or len(set(suggestion_ids)) != len(suggestion_ids):
             raise SuggestionServiceError("invalid_suggestion_batch")
+        edited_text_by_id = edited_text_by_id or {}
+        if not set(edited_text_by_id).issubset(suggestion_ids):
+            raise SuggestionServiceError("invalid_suggestion_batch_edits")
         suggestions = tuple(self._pending(item, principal) for item in suggestion_ids)
         target = suggestions[0]
         if any(
@@ -336,7 +341,13 @@ class SuggestionService:
                 for candidate in suggestions:
                     self._invalidate(candidate, principal, "target_block_changed")
                 raise SuggestionServiceError("suggestion_stale")
-            replacements.append((block.start_line, block.end_line, item.proposed_text))
+            replacements.append(
+                (
+                    block.start_line,
+                    block.end_line,
+                    edited_text_by_id.get(item.suggestion_id, item.proposed_text),
+                )
+            )
         for start, end, replacement in sorted(replacements, reverse=True):
             lines[start - 1 : end] = replacement.strip("\n").splitlines()
         updated = self.versions.autosave(
@@ -348,12 +359,17 @@ class SuggestionService:
             expected_content_sha256=draft.content.content_sha256,
         )
         for item in suggestions:
-            self._decide(item, SuggestionStatus.ACCEPTED, principal, None)
+            self._decide(
+                item,
+                SuggestionStatus.ACCEPTED,
+                principal,
+                edited_text_by_id.get(item.suggestion_id),
+            )
         invalidated = self._invalidate_pending_for_revision(
             draft.draft_id,
             draft.revision,
             principal=principal,
-            exclude=set(suggestion_ids),
+            exclude=set(suggestion_ids) | set(preserve_pending_ids),
         )
         return BatchApplyResult(updated, suggestion_ids, invalidated)
 

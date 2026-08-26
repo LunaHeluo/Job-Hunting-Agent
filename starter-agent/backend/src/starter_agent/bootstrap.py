@@ -62,6 +62,7 @@ from starter_agent.cv_workbench.runtime import (
     WorkbenchRuntime,
     create_workbench_runtime,
 )
+from starter_agent.cv_workbench.tailoring import ProviderTailoredResumeGenerator
 
 
 class _FailClosedDelegationReferenceResolver:
@@ -112,11 +113,17 @@ def get_settings() -> AgentSettings:
 @lru_cache
 def create_cv_workbench_runtime() -> WorkbenchRuntime:
     settings = get_settings()
+    providers = ProviderRegistry(settings)
     from starter_agent.cv_workbench.workspaces import RuntimeFeatureAvailabilityProvider
     return create_workbench_runtime(
         settings.app.database_url,
         settings.project_root,
         feature_provider=RuntimeFeatureAvailabilityProvider(create_application),
+        tailoring_generator=ProviderTailoredResumeGenerator(
+            provider_resolver=providers.get,
+            provider_name=settings.model.default_provider,
+            model=settings.model.default_model,
+        ),
     )
 
 
