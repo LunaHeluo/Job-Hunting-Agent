@@ -34,6 +34,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .playwright-mcp/
+.superpowers/
+.worktrees/
 .codex-*/
 .diagnostic-*/
 .session-only-*/
