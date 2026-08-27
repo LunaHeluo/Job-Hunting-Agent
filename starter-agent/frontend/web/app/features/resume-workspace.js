@@ -30,6 +30,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
   let selectedNode = null;
   let activeResumeId = null;
   let activeMap = null;
+  let lifecycleIsCurrent = () => true;
 
   function button(label, onClick, className = "") {
     const item = document.createElement("button");
@@ -213,7 +214,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
 
   function cleanResumeLine(line) { return line.replace(/^\s*(?:#{1,6}\s*|[-*+•]\s*)/, "").replace(/[*_`]/g, "").trim(); }
 
-  async function renderVersionMap(workspaceId, resumeId, { isCurrent = () => true } = {}) {
+  async function renderVersionMap(workspaceId, resumeId, options = {}) {
+    if (typeof options.isCurrent === "function") lifecycleIsCurrent = options.isCurrent;
+    const isCurrent = lifecycleIsCurrent;
     if (!isCurrent()) return;
     activeResumeId = resumeId;
     elements.main.textContent = "正在加载版本血缘…";
@@ -300,17 +303,19 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     } catch (error) { status.textContent = `导出失败：${error.message}`; }
   }
 
-  async function renderDiff(workspaceId, left, right) {
+  async function renderDiff(workspaceId, left, right, { isCurrent = lifecycleIsCurrent } = {}) {
+    if (!isCurrent()) return;
     elements.main.textContent = "正在计算共同祖先与差异…";
     try {
       const diff = await request(`/v1/workbench/resume-versions/${encodeURIComponent(left.version_id)}/compare/${encodeURIComponent(right.version_id)}?workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (!isCurrent()) return;
       const panel = document.createElement("section"); panel.className = "version-diff-panel";
       const title = document.createElement("h2"); title.textContent = `${left.label} ↔ ${right.label}`;
       const ancestor = document.createElement("p"); ancestor.textContent = `共同祖先：${diff.common_ancestor_version_id || "无"}`;
       const pre = document.createElement("pre"); pre.textContent = (diff.unified || []).join("\n") || "正文无差异";
       panel.append(title, ancestor, pre, button("返回版本地图", () => renderVersionMap(workspaceId, activeResumeId)));
       elements.main.replaceChildren(panel);
-    } catch (error) { elements.main.textContent = `比较失败：${error.message}`; }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `比较失败：${error.message}`; }
   }
 
   async function createDirectionBranch(workspaceId, node) {

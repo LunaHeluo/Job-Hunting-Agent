@@ -455,6 +455,7 @@ globalThis.window = {{ dispatchEvent() {{}}, clearTimeout() {{}}, setTimeout: ca
 globalThis.CustomEvent = class CustomEvent {{ constructor(type, init) {{ this.type = type; this.detail = init.detail; }} }};
 const contextContent = new Element(); const inspectorMount = new Element(); contextContent.append(inspectorMount);
 const main = new Element();
+let versionRouteCurrent = true;
 const workspace = createResumeWorkspace({{
   apiBase: () => "", elements: {{ main, resumes: new Element(), jobs: inspectorMount, status: new Element() }},
   reloadHome: () => {{}},
@@ -464,7 +465,7 @@ const workspace = createResumeWorkspace({{
     : path.includes("view-preference") ? {{ node_positions: {{}}, collapsed_branch_ids: [], viewport_zoom: 1 }}
     : {{ items: [] }},
 }});
-await workspace.renderVersionMap("workspace_1", "resume_1");
+await workspace.renderVersionMap("workspace_1", "resume_1", {{ isCurrent: () => versionRouteCurrent }});
 const button = main.querySelectorAll(".version-node")[0];
 assert.ok(button, "the real graph rendered a version node");
 button.emit("click", {{ shiftKey: false }});
@@ -473,6 +474,11 @@ const findControl = node => node.tagName === "BUTTON"
 const inspectorControl = findControl(contextContent);
 assert.ok(inspectorControl, "the version inspector remains visible in the context rail");
 assert.equal(contextContent.contains(inspectorControl), true);
+const newerRoute = new Element(); newerRoute.className = "newer-route";
+versionRouteCurrent = false;
+main.replaceChildren(newerRoute);
+await workspace.renderVersionMap("workspace_1", "resume_1");
+assert.equal(main.children[0], newerRoute, "a Version Map user reload retains its original route guard");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
@@ -590,6 +596,162 @@ assert.equal(main.children[0]?.className, "applications-board", "Applications re
 resolveMap();
 await versionMap;
 assert.equal(main.children[0]?.className, "applications-board", "late Version Map cannot replace Applications");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_application_filter_refresh_keeps_its_route_guard_and_refreshes_while_current() -> None:
+    module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createApplicationsBoard }} from {json.dumps(module_url)};
+
+class Element {{
+  constructor(tagName = "div") {{
+    this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map();
+    this.dataset = {{}}; this.className = ""; this.textContent = ""; this.value = "";
+    this.classList = {{ add() {{}}, remove() {{}} }};
+  }}
+  append(...items) {{ this.children.push(...items); }}
+  replaceChildren(...items) {{ this.children = [...items]; }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
+  emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
+  setAttribute() {{}}
+  add(item) {{ this.children.push(item); }}
+  querySelector() {{ return null; }}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName) }};
+globalThis.Option = class Option extends Element {{ constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }} }};
+const application = {{ application_id: "app_1", current_status: "applied", priority: 1, resume_version_id: "r1", next_action: null, remind_at: null, events: [], revision: 1 }};
+let current = true;
+let applicationCalls = 0;
+const deferred = [];
+const request = path => {{
+  if (path.includes("applications?")) {{
+    applicationCalls += 1;
+    if (applicationCalls > 1) return new Promise(resolve => deferred.push(() => resolve({{ items: [{{ application, job_snapshot: {{ company: "Acme", title: "Engineer" }} }}] }})));
+    return Promise.resolve({{ items: [{{ application, job_snapshot: {{ company: "Acme", title: "Engineer" }} }}] }});
+  }}
+  if (path.includes("funnel")) return Promise.resolve({{ definition_version: "v1", stages: [] }});
+  return Promise.resolve({{ items: [] }});
+}};
+const main = new Element();
+const board = createApplicationsBoard({{ request, elements: {{ main }} }});
+await board.render("workspace_1", "", "", {{ isCurrent: () => current }});
+const filterButton = () => main.children[0].children[0].children[2];
+filterButton().emit("click");
+deferred.shift()();
+for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+assert.equal(main.children[0]?.className, "applications-board", "filter refresh renders while Applications remains current");
+filterButton().emit("click");
+const newerRoute = new Element(); newerRoute.className = "version-map-toolbar";
+current = false;
+main.replaceChildren(newerRoute);
+deferred.shift()();
+for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+assert.equal(main.children[0], newerRoute, "late filter refresh cannot replace a newer route");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_real_shell_filter_refresh_cannot_overwrite_a_newer_route() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createWorkbenchShell }} from {json.dumps(module_url)};
+
+class Element {{
+  constructor(tagName = "div") {{ this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map(); this.dataset = {{}}; this.className = ""; this.textContent = ""; this.value = ""; this.hidden = false; this.disabled = false; this.style = {{ setProperty() {{}} }}; this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}} }}; }}
+  append(...items) {{ this.children.push(...items); }} replaceChildren(...items) {{ this.children = [...items]; }} add(item) {{ this.children.push(item); }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }} emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
+  setAttribute() {{}} querySelector() {{ return null; }} querySelectorAll() {{ return []; }} closest() {{ return new Element(); }}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName), querySelector: () => null }};
+globalThis.Option = class Option extends Element {{ constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }} }};
+globalThis.localStorage = {{ getItem: () => "workspace_1", setItem() {{}} }};
+globalThis.window = {{ dispatchEvent() {{}}, clearTimeout() {{}}, setTimeout() {{}} }};
+globalThis.CustomEvent = class CustomEvent {{ constructor(type, init) {{ this.type = type; this.detail = init.detail; }} }};
+let applicationCalls = 0; let resolveFilter;
+const response = payload => ({{ ok: true, json: async () => payload }});
+globalThis.fetch = async url => {{
+  const path = String(url);
+  if (path.includes("/applications?")) {{ applicationCalls += 1; return applicationCalls === 1 ? response({{ items: [] }}) : new Promise(resolve => {{ resolveFilter = () => resolve(response({{ items: [] }})); }}); }}
+  if (path.includes("/version-map")) return response({{ nodes: [], edges: [] }});
+  if (path.includes("/view-preference")) return response({{ node_positions: {{}}, collapsed_branch_ids: [], viewport_zoom: 1 }});
+  if (path.includes("workspaces?")) return response({{ items: [{{ workspace_id: "workspace_1", name: "Target" }}] }});
+  if (path.includes("/home")) return response({{ stats: {{ resume_count: 1, job_count: 1, active_operation_count: 0 }}, recent_versions: [{{ resume_id: "resume_1", version_id: "version_1", label: "Base" }}], workspace: {{ workspace_id: "workspace_1", name: "Target", revision: 1 }} }});
+  if (path.includes("/analytics/funnel")) return response({{ definition_version: "v1", stages: [] }});
+  if (path.includes("/reminders?")) return response({{ items: [] }});
+  if (path.includes("/content?")) return response({{ markdown: "", profile: null }});
+  return response({{ items: [] }});
+}};
+const element = () => new Element(); const main = element();
+const shell = createWorkbenchShell({{ getApiBase: () => "", elements: {{
+  status: element(), workspace: element(), jobCount: element(), jobList: element(), agentContext: element(), operationCards: element(), mode: element(), title: element(), main, match: element(), archiveTab: element(), matchTab: element(), view: element(), candidateRail: element(), stageResume: element(), stageJob: element(), stageAnalysis: element(), stageEyebrow: element(), stageTitle: element(), stageDescription: element(), stagePrimary: element(), stageSecondary: element(), agentActions: element(), taskCenter: element(), tailorResumeButton: element(), contextTitle: element(), contextMeta: element(), contextDescription: element(), contextContent: element(), actionBar: element(), actionStatus: element(), resumeList: element(),
+}} }});
+await shell.activate("applications");
+main.children[0].children[0].children[2].emit("click");
+for (let turn = 0; turn < 8 && !resolveFilter; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveFilter, "function", "real filter refresh is in flight");
+await shell.activate("version-map");
+const newerRoute = main.children[0];
+resolveFilter();
+for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+assert.equal(main.children[0], newerRoute, "late real-shell filter refresh cannot replace Version Map");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_application_mutation_refresh_retains_the_route_guard() -> None:
+    module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createApplicationsBoard }} from {json.dumps(module_url)};
+class Element {{
+  constructor(tagName = "div") {{ this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map(); this.dataset = {{}}; this.className = ""; this.textContent = ""; this.value = ""; this.classList = {{ add() {{}}, remove() {{}} }}; }}
+  append(...items) {{ this.children.push(...items); }} replaceChildren(...items) {{ this.children = [...items]; }} add(item) {{ this.children.push(item); }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }} emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
+  setAttribute() {{}} querySelector() {{ return null; }}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName) }};
+globalThis.Option = class Option extends Element {{ constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }} }};
+const application = {{ application_id: "app_1", current_status: "applied", priority: 1, resume_version_id: "r1", next_action: null, remind_at: null, events: [], revision: 1 }};
+let current = true; let applicationCalls = 0; let resolveRefresh;
+const request = path => {{
+  if (path.includes("/events")) return Promise.resolve({{}});
+  if (path.includes("applications?")) {{ applicationCalls += 1; return applicationCalls === 1 ? Promise.resolve({{ items: [{{ application, job_snapshot: {{ company: "Acme", title: "Engineer" }} }}] }}) : new Promise(resolve => {{ resolveRefresh = () => resolve({{ items: [] }}); }}); }}
+  if (path.includes("funnel")) return Promise.resolve({{ definition_version: "v1", stages: [] }});
+  return Promise.resolve({{ items: [] }});
+}};
+const main = new Element(); const board = createApplicationsBoard({{ request, elements: {{ main }} }});
+await board.render("workspace_1", "", "", {{ isCurrent: () => current }});
+const card = main.children[0].children[2].children.find(column => column.children.some(child => child.className === "application-card")).children.find(child => child.className === "application-card");
+card.children[6].emit("click");
+card.children.at(-1).children[3].emit("click");
+for (let turn = 0; turn < 8 && !resolveRefresh; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveRefresh, "function", "post-mutation refresh is in flight");
+const newerRoute = new Element(); newerRoute.className = "newer-route"; current = false; main.replaceChildren(newerRoute);
+resolveRefresh();
+for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+assert.equal(main.children[0], newerRoute, "late post-mutation refresh cannot replace a newer route");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
