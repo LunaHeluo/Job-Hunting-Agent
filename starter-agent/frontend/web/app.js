@@ -5,6 +5,7 @@ import { createWorkbenchShell } from "./app/features/workbench-shell.js?v=202608
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
+import { createTrustReadOwnership } from "./app/trust-request-state.js";
 window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, createStore });
 
     /* capability-ui-logic:start */
@@ -174,6 +175,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       requestEpoch: 0,
       requestController: new AbortController()
     };
+    const trustReadOwnership = createTrustReadOwnership();
 
     const apiBaseInput = document.querySelector("#apiBase");
     const providerSelect = document.querySelector("#providerSelect");
@@ -2397,6 +2399,28 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         && token.apiBase === apiBase();
     }
 
+    function captureTrustRead(lane, selection) {
+      return trustReadOwnership.capture({
+        ...shellState.captureOverlayRequest(),
+        epoch: trustState.requestEpoch,
+        route: trustState.route,
+        apiBase: apiBase(),
+        lane,
+        selection
+      });
+    }
+
+    function isTrustReadCurrent(token, selection) {
+      return trustReadOwnership.isCurrent(token, {
+        ...shellState.captureOverlayRequest(),
+        epoch: trustState.requestEpoch,
+        route: trustState.route,
+        apiBase: apiBase(),
+        lane: token.lane,
+        selection
+      });
+    }
+
     function setTrustStatus(message, isError = false) {
       trustStatus.textContent = message;
       trustStatus.style.color = isError ? "var(--warn)" : "var(--muted)";
@@ -2571,7 +2595,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
 
     async function loadTrustRunEvidence(runId) {
       const request = captureTrustRequest();
-      if (!isTrustRequestCurrent(request)) return;
+      const trustRead = captureTrustRead("run-evidence", runId);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, runId)) return;
       clearTrustError();
       setTrustStatus(`正在加载 ${runId} 的报告证据...`);
       try {
@@ -2581,7 +2606,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
           trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/failure-clusters`, { signal: trustState.requestController.signal }),
           trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/gate`, { signal: trustState.requestController.signal })
         ]);
-        if (!isTrustRequestCurrent(request)) return;
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, runId)) return;
         trustState.caseResults = caseResults.status === "fulfilled"
           ? caseResults.value.case_results || []
           : [];
@@ -2596,13 +2621,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderTrustFailureClusters(gate);
         setTrustStatus(`已加载 ${runId} 的证据；Gate 缺失会按后端原样显示为空。`);
       } catch (error) {
-        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, runId)) renderTrustError(error);
       }
     }
 
     async function loadTrustEvals() {
       const request = captureTrustRequest();
-      if (!isTrustRequestCurrent(request)) return;
+      const trustRead = captureTrustRead("evals", "fixture");
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "fixture")) return;
       clearTrustError();
       setTrustStatus("正在加载固定评测状态...");
       renderCapabilitySkeleton(trustEvalRuns);
@@ -2612,13 +2638,13 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
           trustRequest("/v1/trust/cases", { signal: trustState.requestController.signal }),
           trustRequest("/v1/trust/runs?run_type=fixture", { signal: trustState.requestController.signal })
         ]);
-        if (!isTrustRequestCurrent(request)) return;
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "fixture")) return;
         trustState.suites = suites.suites || [];
         trustState.cases = cases.cases || [];
         trustState.runs = runs.runs || [];
         renderTrustEvals();
       } catch (error) {
-        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, "fixture")) renderTrustError(error);
       }
     }
 
@@ -2682,9 +2708,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function loadTrustTraces() {
-      const request = captureTrustRequest();
-      if (!isTrustRequestCurrent(request)) return;
-      clearTrustError();
       const params = new URLSearchParams();
       const filters = [
         ["eval_run_id", trustTraceRunFilter.value],
@@ -2697,17 +2720,21 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         if (value.trim()) params.set(key, value.trim());
       }
       const suffix = params.toString() ? `?${params.toString()}` : "";
+      const request = captureTrustRequest();
+      const trustRead = captureTrustRead("traces", suffix);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, suffix)) return;
+      clearTrustError();
       setTrustStatus("正在加载 Trace...");
       renderCapabilitySkeleton(trustTraceEvents);
       try {
         const payload = await trustRequest(`/v1/trust/traces${suffix}`, {
           signal: trustState.requestController.signal
         });
-        if (!isTrustRequestCurrent(request)) return;
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, suffix)) return;
         trustState.traces = payload.traces || [];
         renderTrustTraces();
       } catch (error) {
-        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, suffix)) renderTrustError(error);
       }
     }
 
@@ -2741,7 +2768,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
 
     async function loadTrustSafety() {
       const request = captureTrustRequest();
-      if (!isTrustRequestCurrent(request)) return;
+      const trustRead = captureTrustRead("safety", "safety");
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "safety")) return;
       clearTrustError();
       setTrustStatus("正在加载 Safety 状态...");
       renderCapabilitySkeleton(trustSafetyEvidence);
@@ -2749,11 +2777,11 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         const payload = await trustRequest("/v1/trust/safety", {
           signal: trustState.requestController.signal
         });
-        if (!isTrustRequestCurrent(request)) return;
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "safety")) return;
         trustState.safety = payload;
         renderTrustSafety();
       } catch (error) {
-        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, "safety")) renderTrustError(error);
       }
     }
 
