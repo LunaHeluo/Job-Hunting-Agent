@@ -13,8 +13,9 @@ const NEXT = Object.freeze({
 
 function token(prefix) { return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`; }
 
-export function createApplicationsBoard({ request, elements }) {
+export function createApplicationsBoard({ request, elements, onApplicationSelect = () => {} }) {
   let workspaceId = "";
+  let activeCard = null;
 
   async function render(nextWorkspaceId, query = "", status = "") {
     workspaceId = nextWorkspaceId;
@@ -61,6 +62,20 @@ export function createApplicationsBoard({ request, elements }) {
   function renderCard(value) {
     const application = value.application; const job = value.job_snapshot;
     const card = document.createElement("article"); card.className = "application-card";
+    card.tabIndex = 0;
+    const selectApplication = () => {
+      activeCard?.classList.remove("is-active");
+      activeCard = card;
+      card.classList.add("is-active");
+      onApplicationSelect(application);
+    };
+    card.addEventListener("click", selectApplication);
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectApplication();
+      }
+    });
     const title = document.createElement("h3"); title.textContent = `${job.company} · ${job.title}`;
     const meta = document.createElement("p"); meta.textContent = `优先级 ${application.priority} · 简历 ${application.resume_version_id}`;
     const next = document.createElement("p"); next.textContent = `下一步：${application.next_action || "未设置"}`;

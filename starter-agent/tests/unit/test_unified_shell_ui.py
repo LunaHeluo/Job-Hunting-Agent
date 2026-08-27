@@ -333,3 +333,66 @@ def test_css_cascade_uses_safe_flow_and_vertical_agent_layout_below_1280() -> No
 
 def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
     assert _effective_declaration("#workbenchMatchContent", "min-height", 1280) == "0"
+
+
+def test_application_card_selection_notifies_the_context_rail() -> None:
+    module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createApplicationsBoard }} from {json.dumps(module_url)};
+
+class Element {{
+  constructor(tagName = "div") {{
+    this.tagName = tagName.toUpperCase();
+    this.children = [];
+    this.listeners = new Map();
+    this.dataset = {{}};
+    this.className = "";
+    this.classList = {{
+      add: token => {{ this.className = `${{this.className}} ${{token}}`.trim(); }},
+      remove: token => {{ this.className = this.className.split(/\\s+/).filter(item => item && item !== token).join(" "); }},
+    }};
+    this.textContent = "";
+    this.value = "";
+  }}
+  append(...items) {{ this.children.push(...items); }}
+  replaceChildren(...items) {{ this.children = [...items]; }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
+  emit(type) {{ this.listeners.get(type)?.({{ currentTarget: this }}); }}
+  setAttribute() {{}}
+  add(item) {{ this.children.push(item); }}
+  querySelector() {{ return null; }}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName) }};
+globalThis.Option = class Option extends Element {{
+  constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }}
+}};
+const application = {{
+  application_id: "app_1", current_status: "applied", priority: 50,
+  resume_version_id: "version_1", next_action: "等待通知", remind_at: null,
+  events: [], revision: 3,
+}};
+const main = new Element();
+let selected = null;
+const board = createApplicationsBoard({{
+  elements: {{ main }},
+  onApplicationSelect: item => {{ selected = item; }},
+  request: async path => path.includes("applications?")
+    ? {{ items: [{{ application, job_snapshot: {{ company: "OpenAI", title: "Engineer" }} }}] }}
+    : path.includes("funnel") ? {{ definition_version: "v1", stages: [] }} : {{ items: [] }},
+}});
+await board.render("workspace_1");
+const findCard = node => node.className === "application-card"
+  ? node : node.children.map(findCard).find(Boolean);
+const card = findCard(main);
+assert.ok(card, "the rendered board includes an application card");
+card.emit("click");
+assert.equal(selected, application);
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr

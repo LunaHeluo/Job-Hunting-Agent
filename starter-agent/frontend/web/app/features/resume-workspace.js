@@ -25,7 +25,7 @@ const IMPORT_FAILURES = Object.freeze({
   jd_content_empty_after_parse: "文件未提取到可用的简历文本。",
 });
 
-export function createResumeWorkspace({ request, apiBase, elements, reloadHome }) {
+export function createResumeWorkspace({ request, apiBase, elements, reloadHome, onVersionSelect = () => {} }) {
   const graph = new GraphRenderer();
   let selectedNode = null;
   let activeResumeId = null;
@@ -244,6 +244,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
         }
         selectedNode = node;
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: node.version_id, resume_branch_id: node.branch_id, lineage_focus_version_id: node.version_id });
+        onVersionSelect(node);
         renderInspector(workspaceId, node);
       }, { preference, onPreferenceChange: savePreference });
     } catch (error) { elements.main.textContent = `版本地图加载失败：${error.message}`; }

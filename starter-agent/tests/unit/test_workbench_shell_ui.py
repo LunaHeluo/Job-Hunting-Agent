@@ -66,3 +66,15 @@ def test_application_board_uses_backend_timeline_and_confirmation() -> None:
         "不会访问招聘网站",
     ):
         assert contract in JS or contract in HTML
+
+
+def test_a1_canvas_and_context_rail_have_stable_regions() -> None:
+    for contract in (
+        'id="workbenchStageCallout"', 'class="workbench-content-tabs"',
+        'id="workbenchActionBar"', 'class="workspace-scroll-region"',
+        'id="workbenchContextTitle"', 'id="workbenchContextDescription"',
+        'id="workbenchContextContent"', 'class="context-scroll-region"',
+    ):
+        assert contract in HTML
+    for contract in ("onVersionSelect", "onApplicationSelect", "rememberRouteScroll", "restoreRouteScroll"):
+        assert contract in JS

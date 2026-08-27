@@ -13,6 +13,45 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   let contextWorkspaceId = "";
   let currentHome = null;
 
+  function renderContext({ title, meta = "", description = "", content }) {
+    elements.contextTitle.textContent = title;
+    elements.contextMeta.textContent = meta;
+    elements.contextDescription.textContent = description;
+    elements.contextContent.replaceChildren();
+    if (content) elements.contextContent.append(content);
+  }
+
+  function renderWorkbenchContext() {
+    renderContext({
+      title: "岗位候选",
+      meta: elements.jobCount.textContent,
+      description: "确认后的 JD 可在这里快速查看，并进入完整匹配分析。",
+      content: elements.jobList,
+    });
+  }
+
+  function renderVersionContext(node) {
+    const panel = document.createElement("section");
+    panel.className = "context-detail-card";
+    const heading = document.createElement("strong");
+    heading.textContent = node.label;
+    const detail = document.createElement("p");
+    detail.textContent = `状态：${node.status} · revision ${node.revision}`;
+    panel.append(heading, detail);
+    renderContext({ title: "版本详情", meta: `r${node.revision}`, description: "当前选中的简历版本", content: panel });
+  }
+
+  function renderApplicationContext(application) {
+    const panel = document.createElement("section");
+    panel.className = "context-detail-card";
+    const heading = document.createElement("strong");
+    heading.textContent = application.title || application.application_id;
+    const detail = document.createElement("p");
+    detail.textContent = `状态：${application.status || application.current_status} · 下一步：${application.next_action || "未设置"}`;
+    panel.append(heading, detail);
+    renderContext({ title: "投递详情", description: "当前选中的投递记录", content: panel });
+  }
+
   function setContentHeadingVisibility(panel) {
     const heading = elements.title.closest(".workbench-section-heading");
     const hasResume = Boolean(currentHome?.recent_versions?.[0]);
@@ -67,6 +106,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       status: elements.status,
     },
     reloadHome: () => load(true),
+    onVersionSelect: renderVersionContext,
   });
   const jobMatching = createJobMatching({
     request,
@@ -75,7 +115,11 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     reloadHome: () => load(true),
   });
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
-  const applicationsBoard = createApplicationsBoard({ request, elements: { main: elements.main } });
+  const applicationsBoard = createApplicationsBoard({
+    request,
+    elements: { main: elements.main },
+    onApplicationSelect: renderApplicationContext,
+  });
 
   const STAGES = Object.freeze({
     A: {
@@ -201,6 +245,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.jobList.textContent = stats.job_count
       ? `已确认岗位 ${stats.job_count} 个；候选来源需逐项确认。`
       : "暂无已确认岗位。";
+    if (activeRoute === "workbench") renderWorkbenchContext();
     elements.agentContext.textContent = stats.resume_count
       ? `当前上下文：${home.workspace?.name || "求职目标"}；Agent 不会自动提交修改。`
       : "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。";
@@ -306,6 +351,11 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   async function activate(route) {
     activeRoute = route;
     elements.title.textContent = route === "version-map" ? "版本地图" : route === "applications" ? "投递看板" : elements.title.textContent;
+    elements.actionStatus.textContent = route === "version-map"
+      ? "选择版本后显示可用操作"
+      : route === "applications"
+        ? "选择投递记录后显示可用操作"
+        : "选择当前任务后显示可用操作";
     await load(true);
   }
   async function tailorResume(context) {

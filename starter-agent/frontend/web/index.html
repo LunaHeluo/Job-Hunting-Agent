@@ -117,16 +117,22 @@
               <button id="workbenchArchiveTab" type="button" aria-current="page">档案</button>
               <button id="workbenchMatchTab" type="button">岗位匹配</button>
             </nav>
-            <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
-            <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
-            <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+            <div class="workspace-scroll-region" data-scroll-key="center">
+              <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
+              <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
+              <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+            </div>
+            <footer id="workbenchActionBar" class="workbench-action-bar" aria-live="polite">
+              <span id="workbenchActionStatus">选择当前任务后显示可用操作</span>
+              <div id="workbenchActionControls"></div>
+            </footer>
           </section>
         </main>
         <aside id="contextRail" class="workbench-right">
           <section id="workbenchCandidateRail" class="workbench-card workbench-context-card">
             <div class="workbench-section-heading"><h2 id="workbenchContextTitle">岗位候选</h2><span id="workbenchContextMeta"><span id="workbenchJobCount">—</span></span></div>
             <p id="workbenchContextDescription" class="workbench-helper">确认后的 JD 可在这里快速查看，并进入完整匹配分析。</p>
-            <div id="workbenchContextContent"><div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div></div>
+            <div id="workbenchContextContent" class="context-scroll-region"><div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div></div>
           </section>
         </aside>
       </div>
