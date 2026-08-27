@@ -52,12 +52,12 @@ def test_workbench_routes_are_first_class_and_existing_routes_remain() -> None:
         '#/workbench',
         '#/version-map',
         '#/applications',
-        '#/chat',
         '#/knowledge',
         '#/capabilities/mcp-servers',
         '#/trust/evals',
     ):
         assert route in JS or route in HTML
+    assert '#/chat' not in (WEB / "app/shell-state.js").read_text(encoding="utf-8")
 
 
 def test_application_board_uses_backend_timeline_and_confirmation() -> None:
