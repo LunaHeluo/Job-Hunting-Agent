@@ -358,7 +358,7 @@ class Element {{
   append(...items) {{ this.children.push(...items); }}
   replaceChildren(...items) {{ this.children = [...items]; }}
   addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
-  emit(type) {{ this.listeners.get(type)?.({{ currentTarget: this }}); }}
+  emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
   setAttribute() {{}}
   add(item) {{ this.children.push(item); }}
   querySelector() {{ return null; }}
@@ -388,6 +388,19 @@ const card = findCard(main);
 assert.ok(card, "the rendered board includes an application card");
 card.emit("click");
 assert.equal(selected, application);
+selected = null;
+let cardPrevented = false;
+card.emit("keydown", {{ key: "Enter", preventDefault: () => {{ cardPrevented = true; }} }});
+assert.equal(cardPrevented, true);
+assert.equal(selected, application);
+selected = null;
+let descendantPrevented = false;
+card.emit("keydown", {{
+  key: " ", target: card.children[0],
+  preventDefault: () => {{ descendantPrevented = true; }},
+}});
+assert.equal(descendantPrevented, false, "card selection does not cancel a descendant control");
+assert.equal(selected, null, "a descendant key event does not select the card");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
@@ -396,3 +409,110 @@ assert.equal(selected, application);
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_real_version_node_selection_keeps_the_inspector_in_the_context_rail() -> None:
+    module_url = (WEB / "app/features/resume-workspace.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createResumeWorkspace }} from {json.dumps(module_url)};
+
+class Element {{
+  constructor(tagName = "div") {{
+    this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map();
+    this.dataset = {{}}; this.className = ""; this.textContent = ""; this.value = "";
+    this.style = {{ setProperty() {{}} }}; this.parentElement = null;
+    this.classList = {{
+      add: token => {{ this.className = `${{this.className}} ${{token}}`.trim(); }},
+      remove: token => {{ this.className = this.className.split(/\\s+/).filter(item => item && item !== token).join(" "); }},
+      toggle: (token, active) => active ? this.classList.add(token) : this.classList.remove(token),
+    }};
+  }}
+  append(...items) {{ for (const item of items) {{
+    if (item.parentElement) item.parentElement.children = item.parentElement.children.filter(child => child !== item);
+    item.parentElement = this; this.children.push(item);
+  }} }}
+  replaceChildren(...items) {{ for (const child of this.children) child.parentElement = null; this.children = []; this.append(...items); }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
+  emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
+  setAttribute(name, value) {{ this[name] = value; }}
+  querySelectorAll(selector) {{
+    const all = this.children.flatMap(child => [child, ...child.querySelectorAll(selector)]);
+    if (selector === ".version-node") return all.filter(item => item.className.split(/\\s+/).includes("version-node"));
+    if (selector === '[role="treeitem"]') return all.filter(item => item.role === "treeitem");
+    return [];
+  }}
+  querySelector(selector) {{ return this.querySelectorAll(selector)[0] || null; }}
+  get lastElementChild() {{ return this.children.at(-1) || null; }}
+  contains(target) {{ for (let node = target; node; node = node.parentElement) if (node === this) return true; return false; }}
+  focus() {{}}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName), querySelector: () => null }};
+globalThis.Option = class Option extends Element {{
+  constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }}
+}};
+globalThis.window = {{ dispatchEvent() {{}}, clearTimeout() {{}}, setTimeout: callback => callback() }};
+globalThis.CustomEvent = class CustomEvent {{ constructor(type, init) {{ this.type = type; this.detail = init.detail; }} }};
+const contextContent = new Element(); const inspectorMount = new Element(); contextContent.append(inspectorMount);
+const main = new Element();
+const workspace = createResumeWorkspace({{
+  apiBase: () => "", elements: {{ main, resumes: new Element(), jobs: inspectorMount, status: new Element() }},
+  reloadHome: () => {{}},
+  onVersionSelect: (_node, selection) => contextContent.replaceChildren(selection?.inspectorMount || new Element()),
+  request: async path => path.includes("version-map")
+    ? {{ nodes: [{{ version_id: "version_1", branch_id: "branch_1", label: "基础版本", status: "confirmed", node_type: "base", revision: 7 }}], edges: [] }}
+    : path.includes("view-preference") ? {{ node_positions: {{}}, collapsed_branch_ids: [], viewport_zoom: 1 }}
+    : {{ items: [] }},
+}});
+await workspace.renderVersionMap("workspace_1", "resume_1");
+const button = main.querySelectorAll(".version-node")[0];
+assert.ok(button, "the real graph rendered a version node");
+button.emit("click", {{ shiftKey: false }});
+const findControl = node => node.tagName === "BUTTON"
+  ? node : node.children.map(findControl).find(Boolean);
+const inspectorControl = findControl(contextContent);
+assert.ok(inspectorControl, "the version inspector remains visible in the context rail");
+assert.equal(contextContent.contains(inspectorControl), true);
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_route_activation_coordinator_restores_only_the_latest_route() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createRouteActivationCoordinator }} from {json.dumps(module_url)};
+
+const deferred = new Map();
+const restored = [];
+const scheduled = [];
+const coordinator = createRouteActivationCoordinator({{
+  activate: route => new Promise(resolve => deferred.set(route, resolve)),
+  onStart() {{}},
+  onCurrent: route => restored.push(route),
+  schedule: callback => scheduled.push(callback),
+}});
+const first = coordinator.apply("version-map");
+const second = coordinator.apply("applications");
+deferred.get("applications")();
+await second;
+scheduled.splice(0).forEach(callback => callback());
+deferred.get("version-map")();
+await first;
+scheduled.splice(0).forEach(callback => callback());
+assert.deepEqual(restored, ["applications"]);
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "createRouteActivationCoordinator" in APP

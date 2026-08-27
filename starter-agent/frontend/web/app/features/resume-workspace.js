@@ -244,7 +244,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         }
         selectedNode = node;
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: node.version_id, resume_branch_id: node.branch_id, lineage_focus_version_id: node.version_id });
-        onVersionSelect(node);
+        onVersionSelect(node, { inspectorMount: elements.jobs });
         renderInspector(workspaceId, node);
       }, { preference, onPreferenceChange: savePreference });
     } catch (error) { elements.main.textContent = `版本地图加载失败：${error.message}`; }

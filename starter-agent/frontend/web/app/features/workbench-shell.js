@@ -5,6 +5,22 @@ import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js";
 
+export function createRouteActivationCoordinator({ activate, onStart, onCurrent, schedule = callback => requestAnimationFrame(callback) }) {
+  let epoch = 0;
+  return Object.freeze({
+    async apply(route) {
+      const token = ++epoch;
+      onStart(route);
+      await activate(route);
+      if (token !== epoch) return false;
+      schedule(() => {
+        if (token === epoch) onCurrent(route);
+      });
+      return true;
+    },
+  });
+}
+
 export function createWorkbenchShell({ getApiBase, elements }) {
   let workspaces = [];
   let activeWorkspaceId = localStorage.getItem(WORKSPACE_KEY) || "";
@@ -12,6 +28,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   let activeRoute = "workbench";
   let contextWorkspaceId = "";
   let currentHome = null;
+  let loadEpoch = 0;
 
   function renderContext({ title, meta = "", description = "", content }) {
     elements.contextTitle.textContent = title;
@@ -30,15 +47,8 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     });
   }
 
-  function renderVersionContext(node) {
-    const panel = document.createElement("section");
-    panel.className = "context-detail-card";
-    const heading = document.createElement("strong");
-    heading.textContent = node.label;
-    const detail = document.createElement("p");
-    detail.textContent = `状态：${node.status} · revision ${node.revision}`;
-    panel.append(heading, detail);
-    renderContext({ title: "版本详情", meta: `r${node.revision}`, description: "当前选中的简历版本", content: panel });
+  function renderVersionContext(node, { inspectorMount = elements.jobList } = {}) {
+    renderContext({ title: "版本详情", meta: `r${node.revision}`, description: "当前选中的简历版本", content: inspectorMount });
   }
 
   function renderApplicationContext(application) {
@@ -309,11 +319,12 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   }
 
   async function load(force = false) {
-    if (loading) return;
+    const token = ++loadEpoch;
     loading = true;
     setStatus("正在加载权威工作台状态…");
     try {
       const page = await request("/v1/workbench/workspaces?limit=50");
+      if (token !== loadEpoch) return;
       workspaces = page.items || [];
       if (!workspaces.some(item => item.workspace_id === activeWorkspaceId)) {
         activeWorkspaceId = workspaces[0]?.workspace_id || "";
@@ -325,12 +336,16 @@ export function createWorkbenchShell({ getApiBase, elements }) {
         return;
       }
       localStorage.setItem(WORKSPACE_KEY, activeWorkspaceId);
-      renderHome(await request(`/v1/workbench/workspaces/${encodeURIComponent(activeWorkspaceId)}/home`));
+      const home = await request(`/v1/workbench/workspaces/${encodeURIComponent(activeWorkspaceId)}/home`);
+      if (token !== loadEpoch) return;
+      renderHome(home);
     } catch (error) {
-      setStatus(`工作台加载失败：${error.message}`, true);
-      elements.main.textContent = "数据未加载成功。已保留当前页面，可稍后重试。";
+      if (token === loadEpoch) {
+        setStatus(`工作台加载失败：${error.message}`, true);
+        elements.main.textContent = "数据未加载成功。已保留当前页面，可稍后重试。";
+      }
     } finally {
-      loading = false;
+      if (token === loadEpoch) loading = false;
     }
   }
 

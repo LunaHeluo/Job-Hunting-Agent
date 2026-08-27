@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -4080,6 +4080,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
 
     const workbenchCenterScroll = document.querySelector(".workspace-scroll-region");
     const workbenchContextScroll = document.querySelector("#workbenchContextContent");
+    let renderedPrimaryRoute = shellState.snapshot().primaryRoute;
 
     function rememberRouteScroll(route) {
       shellState.rememberScroll(`${route}:center`, workbenchCenterScroll.scrollTop);
@@ -4090,6 +4091,21 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       workbenchCenterScroll.scrollTop = shellState.scrollFor(`${route}:center`);
       workbenchContextScroll.scrollTop = shellState.scrollFor(`${route}:context`);
     }
+
+    const routeActivation = createRouteActivationCoordinator({
+      onStart(route) {
+        rememberRouteScroll(renderedPrimaryRoute);
+        shellState.navigate(route);
+        workbenchPageTab.setAttribute("aria-current", route === "workbench" ? "page" : "false");
+        versionMapPageTab.setAttribute("aria-current", route === "version-map" ? "page" : "false");
+        applicationsPageTab.setAttribute("aria-current", route === "applications" ? "page" : "false");
+      },
+      activate: route => workbenchShell.activate(route),
+      onCurrent(route) {
+        renderedPrimaryRoute = route;
+        restoreRouteScroll(route);
+      },
+    });
 
     function setCapabilityRoute(route) {
       if (!["mcp-servers", "skills"].includes(route)) return;
@@ -4105,14 +4121,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
 
     async function applyPrimaryHashRoute() {
       const route = resolveShellRoute(window.location.hash, requestedRoute);
-      const previousRoute = shellState.snapshot().primaryRoute;
-      rememberRouteScroll(previousRoute);
-      shellState.navigate(route);
-      workbenchPageTab.setAttribute("aria-current", route === "workbench" ? "page" : "false");
-      versionMapPageTab.setAttribute("aria-current", route === "version-map" ? "page" : "false");
-      applicationsPageTab.setAttribute("aria-current", route === "applications" ? "page" : "false");
-      await workbenchShell.activate(route);
-      requestAnimationFrame(() => restoreRouteScroll(route));
+      await routeActivation.apply(route);
     }
 
     async function openAdvancedWindow(type, trigger) {
