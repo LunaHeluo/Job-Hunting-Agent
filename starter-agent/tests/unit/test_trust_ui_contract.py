@@ -9,7 +9,7 @@ def test_trust_center_navigation_is_modal_local_and_has_tabs() -> None:
     for contract in (
         'id="trustNavButton"',
         'id="trustView"',
-        'openAdvancedWindow("trust", trustNavButton)',
+        'openAdvancedWindow("trust", settingsReturnFocus)',
         "function setTrustRoute(route)",
         'advancedWindow.activeType() === "trust"',
         'id="trustEvalsTab"',
@@ -56,6 +56,20 @@ def test_trust_center_calls_real_backend_endpoints() -> None:
         "renderTrustSafety",
     ):
         assert f"function {function_name}" in HTML
+
+
+def test_all_trust_read_loaders_bind_epoch_route_and_abort_ownership() -> None:
+    for loader in (
+        "loadTrustRunEvidence",
+        "loadTrustEvals",
+        "loadTrustTraces",
+        "loadTrustSafety",
+    ):
+        start = HTML.index(f"async function {loader}")
+        body = HTML[start : HTML.index("\n    }", start) + 6]
+        assert "const request = captureTrustRequest();" in body
+        assert "signal: trustState.requestController.signal" in body
+        assert "if (!isTrustRequestCurrent(request)) return;" in body
 
 
 def test_trust_center_does_not_render_static_success_or_mutate_gate_result() -> None:

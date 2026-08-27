@@ -16,9 +16,9 @@ def test_advanced_platform_features_are_available_from_settings() -> None:
         assert f'id="{element_id}"' in settings
         assert HTML.count(f'id="{element_id}"') == 1
     for call in (
-        'openAdvancedWindow("knowledge", knowledgeNavButton)',
-        'openAdvancedWindow("capabilities", capabilitiesNavButton)',
-        'openAdvancedWindow("trust", trustNavButton)',
+        'openAdvancedWindow("knowledge", settingsReturnFocus)',
+        'openAdvancedWindow("capabilities", settingsReturnFocus)',
+        'openAdvancedWindow("trust", settingsReturnFocus)',
     ):
         assert call in APP
     for legacy_hash in ("#/knowledge", "#/capabilities/", "#/trust/"):

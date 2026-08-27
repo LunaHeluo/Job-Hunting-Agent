@@ -1,5 +1,7 @@
 from html.parser import HTMLParser
+import json
 from pathlib import Path
+import subprocess
 
 
 WEB = Path("frontend/web")
@@ -81,6 +83,121 @@ def test_modal_manager_owns_focus_close_and_replacement() -> None:
         "returnFocus?.focus()", "activeType",
     ):
         assert contract in MODALS
+
+
+def test_modal_manager_executes_focus_safe_close_and_replacement_behavior() -> None:
+    module_url = (WEB / "app/modal-manager.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createModalManager }} from {json.dumps(module_url)};
+
+const documentListeners = new Map();
+const focusOrder = [];
+globalThis.document = {{
+  activeElement: null,
+  body: {{ classList: new Set(), }},
+  addEventListener(type, handler) {{ documentListeners.set(type, handler); }},
+  dispatch(type, event) {{ documentListeners.get(type)?.(event); }},
+}};
+document.body.classList.add = Set.prototype.add.bind(document.body.classList);
+document.body.classList.remove = Set.prototype.delete.bind(document.body.classList);
+
+class Element {{
+  constructor(name, parent = null) {{
+    this.name = name;
+    this.parentElement = parent;
+    this.hidden = false;
+    this.textContent = "";
+    this.listeners = new Map();
+    this.focusables = [];
+  }}
+  addEventListener(type, handler) {{ this.listeners.set(type, handler); }}
+  emit(type, event = {{}}) {{ this.listeners.get(type)?.(event); }}
+  querySelectorAll() {{ return this.focusables; }}
+  closest(selector) {{
+    if (selector !== "[hidden]") return null;
+    for (let node = this; node; node = node.parentElement) if (node.hidden) return node;
+    return null;
+  }}
+  getClientRects() {{ return this.closest("[hidden]") ? [] : [{{}}]; }}
+  contains(target) {{
+    for (let node = target; node; node = node.parentElement) if (node === this) return true;
+    return false;
+  }}
+  focus() {{ document.activeElement = this; focusOrder.push(this.name); }}
+}}
+
+const overlay = new Element("overlay");
+const dialog = new Element("dialog", overlay);
+const title = new Element("title", dialog);
+const closeButton = new Element("close", dialog);
+const knowledgePanel = new Element("knowledge", dialog);
+const capabilityPanel = new Element("capabilities", dialog);
+const trustPanel = new Element("trust", dialog);
+const visibleButton = new Element("visible", knowledgePanel);
+const hiddenButton = new Element("hidden", capabilityPanel);
+const opener = new Element("settings opener");
+const outside = new Element("outside");
+dialog.focusables = [closeButton, visibleButton, hiddenButton];
+const closed = [];
+const manager = createModalManager({{
+  overlay, dialog, title, closeButton,
+  panels: {{ knowledge: knowledgePanel, capabilities: capabilityPanel, trust: trustPanel }},
+  onBeforeClose: type => closed.push(type),
+}});
+const tab = (shiftKey = false) => {{
+  let prevented = false;
+  document.dispatch("keydown", {{ key: "Tab", shiftKey, preventDefault: () => {{ prevented = true; }} }});
+  assert.equal(prevented, true);
+}};
+
+manager.open("knowledge", opener);
+assert.equal(document.activeElement, closeButton);
+assert.equal(capabilityPanel.hidden, true);
+document.activeElement = outside;
+tab();
+assert.equal(document.activeElement, closeButton);
+document.activeElement = outside;
+tab(true);
+assert.equal(document.activeElement, visibleButton);
+
+const beforeReplace = focusOrder.length;
+let replacementType = null;
+manager.replace("capabilities", type => {{ replacementType = type; }});
+assert.deepEqual(closed, ["knowledge"]);
+assert.equal(replacementType, "capabilities");
+assert.equal(manager.activeType(), "capabilities");
+assert.equal(overlay.hidden, false);
+assert.equal(focusOrder.slice(beforeReplace).includes("settings opener"), false);
+manager.close();
+assert.deepEqual(closed, ["knowledge", "capabilities"]);
+assert.equal(document.activeElement, opener);
+
+manager.open("trust", opener);
+document.dispatch("keydown", {{ key: "Escape" }});
+assert.equal(overlay.hidden, true);
+assert.equal(document.activeElement, opener);
+manager.open("knowledge", opener);
+overlay.emit("click", {{ target: overlay }});
+assert.equal(overlay.hidden, true);
+manager.open("capabilities", opener);
+closeButton.emit("click");
+assert.equal(overlay.hidden, true);
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_settings_handoff_uses_the_settings_opener_as_modal_return_target() -> None:
+    assert "closeSettings({ restoreFocus: false })" in APP
+    assert "advancedWindow.replace(type, nextType => shellState.openOverlay(nextType));" in APP
+    for modal_type in ("knowledge", "capabilities", "trust"):
+        assert f'openAdvancedWindow("{modal_type}", settingsReturnFocus)' in APP
 
 
 def test_markup_has_one_persistent_shell_and_one_agent_mount() -> None:

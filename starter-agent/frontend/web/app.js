@@ -391,9 +391,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       await loadMemories();
     }
 
-    function closeSettings() {
+    function closeSettings({ restoreFocus = true } = {}) {
       settingsOverlay.hidden = true;
-      settingsReturnFocus?.focus();
+      if (restoreFocus) settingsReturnFocus?.focus();
     }
 
     function memoryCategoryLabel(category) {
@@ -2570,15 +2570,18 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function loadTrustRunEvidence(runId) {
+      const request = captureTrustRequest();
+      if (!isTrustRequestCurrent(request)) return;
       clearTrustError();
       setTrustStatus(`正在加载 ${runId} 的报告证据...`);
       try {
         const [caseResults, metrics, clusters, gateResult] = await Promise.allSettled([
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/case-results`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/metrics`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/failure-clusters`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/gate`)
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/case-results`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/metrics`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/failure-clusters`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/gate`, { signal: trustState.requestController.signal })
         ]);
+        if (!isTrustRequestCurrent(request)) return;
         trustState.caseResults = caseResults.status === "fulfilled"
           ? caseResults.value.case_results || []
           : [];
@@ -2593,13 +2596,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderTrustFailureClusters(gate);
         setTrustStatus(`已加载 ${runId} 的证据；Gate 缺失会按后端原样显示为空。`);
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
       }
     }
 
     async function loadTrustEvals() {
-      clearTrustError();
       const request = captureTrustRequest();
+      if (!isTrustRequestCurrent(request)) return;
+      clearTrustError();
       setTrustStatus("正在加载固定评测状态...");
       renderCapabilitySkeleton(trustEvalRuns);
       try {
@@ -2678,6 +2682,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function loadTrustTraces() {
+      const request = captureTrustRequest();
+      if (!isTrustRequestCurrent(request)) return;
       clearTrustError();
       const params = new URLSearchParams();
       const filters = [
@@ -2694,11 +2700,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       setTrustStatus("正在加载 Trace...");
       renderCapabilitySkeleton(trustTraceEvents);
       try {
-        const payload = await trustRequest(`/v1/trust/traces${suffix}`);
+        const payload = await trustRequest(`/v1/trust/traces${suffix}`, {
+          signal: trustState.requestController.signal
+        });
+        if (!isTrustRequestCurrent(request)) return;
         trustState.traces = payload.traces || [];
         renderTrustTraces();
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
       }
     }
 
@@ -2731,15 +2740,20 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function loadTrustSafety() {
+      const request = captureTrustRequest();
+      if (!isTrustRequestCurrent(request)) return;
       clearTrustError();
       setTrustStatus("正在加载 Safety 状态...");
       renderCapabilitySkeleton(trustSafetyEvidence);
       try {
-        const payload = await trustRequest("/v1/trust/safety");
+        const payload = await trustRequest("/v1/trust/safety", {
+          signal: trustState.requestController.signal
+        });
+        if (!isTrustRequestCurrent(request)) return;
         trustState.safety = payload;
         renderTrustSafety();
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
       }
     }
 
@@ -4052,8 +4066,13 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function openAdvancedWindow(type, trigger) {
-      shellState.openOverlay(type);
-      advancedWindow.open(type, trigger);
+      const replacingType = advancedWindow.activeType();
+      if (replacingType && replacingType !== type) {
+        advancedWindow.replace(type, nextType => shellState.openOverlay(nextType));
+      } else {
+        shellState.openOverlay(type);
+        advancedWindow.open(type, trigger);
+      }
       if (type === "knowledge") await loadKnowledgeBase();
       if (type === "capabilities") {
         await refreshCapabilityRoute();
@@ -4472,15 +4491,15 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     });
     knowledgeNavButton.addEventListener(
       "click",
-      () => { closeSettings(); void openAdvancedWindow("knowledge", knowledgeNavButton); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("knowledge", settingsReturnFocus); }
     );
     capabilitiesNavButton.addEventListener(
       "click",
-      () => { closeSettings(); void openAdvancedWindow("capabilities", capabilitiesNavButton); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("capabilities", settingsReturnFocus); }
     );
     trustNavButton.addEventListener(
       "click",
-      () => { closeSettings(); void openAdvancedWindow("trust", trustNavButton); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("trust", settingsReturnFocus); }
     );
     capabilityServersTab.addEventListener(
       "click",

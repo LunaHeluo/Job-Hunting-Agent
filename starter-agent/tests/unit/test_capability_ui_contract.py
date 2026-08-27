@@ -9,7 +9,7 @@ def test_capability_navigation_is_modal_local_and_has_shared_layout() -> None:
     for contract in (
         'id="capabilitiesNavButton"',
         'id="capabilitiesView"',
-        'openAdvancedWindow("capabilities", capabilitiesNavButton)',
+        'openAdvancedWindow("capabilities", settingsReturnFocus)',
         "function setCapabilityRoute(route)",
         'advancedWindow.activeType() === "capabilities"',
         'id="capabilityServersTab"',
