@@ -57,7 +57,11 @@ def test_workbench_routes_are_first_class_and_existing_routes_remain() -> None:
         '#/trust/evals',
     ):
         assert route in JS or route in HTML
-    assert '#/chat' not in (WEB / "app/shell-state.js").read_text(encoding="utf-8")
+
+
+def test_shell_state_primary_route_source_excludes_legacy_chat() -> None:
+    shell_state = (WEB / "app/shell-state.js").read_text(encoding="utf-8")
+    assert '#/chat' not in shell_state
 
 
 def test_application_board_uses_backend_timeline_and_confirmation() -> None:
