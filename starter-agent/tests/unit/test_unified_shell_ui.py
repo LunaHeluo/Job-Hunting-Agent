@@ -6,6 +6,7 @@ WEB = Path("frontend/web")
 HTML = (WEB / "index.html").read_text(encoding="utf-8")
 APP = (WEB / "app.js").read_text(encoding="utf-8")
 STATE = (WEB / "app/shell-state.js").read_text(encoding="utf-8")
+MODALS = (WEB / "app/modal-manager.js").read_text(encoding="utf-8")
 CSS = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "styles").glob("*.css"))
 
 
@@ -58,6 +59,28 @@ def test_shell_state_guards_late_overlay_requests_and_scroll_positions() -> None
         "scrollFor",
     ):
         assert contract in STATE
+
+
+def test_app_uses_primary_only_routing_and_never_moves_chat_dom() -> None:
+    for contract in (
+        'from "./app/shell-state.js"',
+        'from "./app/modal-manager.js"',
+        'openAdvancedWindow("knowledge"',
+        'openAdvancedWindow("capabilities"',
+        'openAdvancedWindow("trust"',
+    ):
+        assert contract in APP
+    assert ".append(chatDock)" not in APP
+    assert 'navigatePrimaryHash("#/chat")' not in APP
+
+
+def test_modal_manager_owns_focus_close_and_replacement() -> None:
+    for contract in (
+        "createModalManager", "returnFocus", 'event.key === "Escape"',
+        'event.key !== "Tab"', "overlay.hidden = false", "overlay.hidden = true",
+        "returnFocus?.focus()", "activeType",
+    ):
+        assert contract in MODALS
 
 
 def test_markup_has_one_persistent_shell_and_one_agent_mount() -> None:

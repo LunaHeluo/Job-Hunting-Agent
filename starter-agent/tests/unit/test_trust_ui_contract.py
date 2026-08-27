@@ -5,13 +5,13 @@ WEB = Path("frontend/web")
 HTML = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "index.html", *sorted(WEB.rglob("*.css")), *sorted(WEB.rglob("*.js"))))
 
 
-def test_trust_center_navigation_routes_and_tabs_exist() -> None:
+def test_trust_center_navigation_is_modal_local_and_has_tabs() -> None:
     for contract in (
         'id="trustNavButton"',
         'id="trustView"',
-        "#/trust/evals",
-        "#/trust/traces",
-        "#/trust/safety",
+        'openAdvancedWindow("trust", trustNavButton)',
+        "function setTrustRoute(route)",
+        'advancedWindow.activeType() === "trust"',
         'id="trustEvalsTab"',
         'id="trustTracesTab"',
         'id="trustSafetyTab"',

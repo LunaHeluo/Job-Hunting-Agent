@@ -15,9 +15,14 @@ def test_advanced_platform_features_are_available_from_settings() -> None:
     for element_id in ("knowledgeNavButton", "capabilitiesNavButton", "trustNavButton"):
         assert f'id="{element_id}"' in settings
         assert HTML.count(f'id="{element_id}"') == 1
-    assert '#/knowledge' in APP
-    assert '#/capabilities/mcp-servers' in APP
-    assert '#/trust/evals' in APP
+    for call in (
+        'openAdvancedWindow("knowledge", knowledgeNavButton)',
+        'openAdvancedWindow("capabilities", capabilitiesNavButton)',
+        'openAdvancedWindow("trust", trustNavButton)',
+    ):
+        assert call in APP
+    for legacy_hash in ("#/knowledge", "#/capabilities/", "#/trust/"):
+        assert legacy_hash not in APP
 
 
 def test_dialog_keyboard_and_motion_accessibility_contracts() -> None:
