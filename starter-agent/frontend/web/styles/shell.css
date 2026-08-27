@@ -1,0 +1,108 @@
+:root {
+  --app-bg: #f4f1e9;
+  --app-surface: #fffdf8;
+  --app-ink: #263c31;
+  --app-muted: #68716b;
+  --app-line: #dfd9cc;
+  --app-accent: #176b4d;
+  --app-accent-soft: #dcefe3;
+  --app-header-block-size: 54px;
+  --app-shell-gap: 16px;
+  --app-workspace-block-size: calc(100dvh - var(--app-header-block-size) - 32px);
+}
+
+body {
+  overflow: hidden;
+  background: var(--app-bg);
+  color: var(--app-ink);
+}
+
+.app-shell,
+.workbench-view {
+  min-height: 100dvh;
+}
+
+@media (min-width: 1280px) {
+  .workbench-view {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workbench-layout {
+    height: var(--app-workspace-block-size);
+    min-height: 0;
+    align-items: stretch;
+    grid-template-columns: clamp(270px, 18vw, 330px) minmax(620px, 1fr) clamp(260px, 18vw, 340px);
+    gap: var(--app-shell-gap);
+  }
+
+  .workbench-left {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--app-shell-gap);
+    height: 100%;
+    min-height: 0;
+  }
+
+  .workbench-main,
+  .workbench-right,
+  .workbench-canvas,
+  .workbench-context-card {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .workbench-agent-card,
+  .workbench-canvas,
+  .workbench-context-card {
+    overflow: hidden;
+  }
+
+  .workbench-agent-card,
+  .workbench-context-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .workbench-canvas {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .workbench-chat-dock,
+  #workbenchContextContent {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .agent-scroll-region,
+  .workspace-scroll-region,
+  .context-scroll-region,
+  .workbench-chat-dock .messages,
+  .workbench-canvas > #workbenchMainContent,
+  .workbench-canvas > #workbenchMatchContent,
+  #workbenchContextContent {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .workbench-canvas > #workbenchMatchContent {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1279px) {
+  body {
+    overflow: auto;
+  }
+
+  .workbench-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+}

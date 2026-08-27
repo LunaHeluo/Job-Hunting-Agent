@@ -1,3 +1,15 @@
 :root {
   color-scheme: light;
+  --wb-bg: var(--app-bg);
+  --wb-paper: var(--app-surface);
+  --wb-text: var(--app-ink);
+  --wb-muted: var(--app-muted);
+  --wb-line: var(--app-line);
+  --wb-accent: var(--app-accent);
+  --wb-accent-soft: var(--app-accent-soft);
+  --wb-warning: #9a6818;
+  --wb-warning-soft: #fff6e8;
+  --wb-danger: #a14a43;
+  --wb-radius-card: 12px;
+  --wb-radius-control: 8px;
 }

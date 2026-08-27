@@ -232,3 +232,27 @@ def test_advanced_overlay_is_a_dialog_sibling_after_the_persistent_shell() -> No
     }
     for context_id in ("advancedTitle", "advancedCloseButton"):
         assert "advancedDialog" in tree.ancestor_ids_by_id[context_id]
+
+
+def test_desktop_shell_has_one_equal_height_geometry_contract() -> None:
+    for contract in (
+        "--app-workspace-block-size: calc(100dvh - var(--app-header-block-size) - 32px)",
+        "height: var(--app-workspace-block-size)",
+        "grid-template-rows: auto minmax(0, 1fr)",
+        "align-items: stretch",
+        ".workspace-scroll-region",
+        ".context-scroll-region",
+        ".agent-scroll-region",
+        "overflow: auto",
+        "@media (min-width: 1280px)",
+    ):
+        assert contract in CSS
+
+
+def test_s1_tokens_are_shared_by_shell_and_workbench() -> None:
+    for token in (
+        "--app-bg: #f4f1e9", "--app-surface: #fffdf8", "--app-ink: #263c31",
+        "--app-accent: #176b4d", "--app-accent-soft: #dcefe3",
+    ):
+        assert token in CSS
+    assert "--wb-bg: var(--app-bg)" in CSS

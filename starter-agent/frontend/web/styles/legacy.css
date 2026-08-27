@@ -1,13 +1,13 @@
     :root {
-      --bg: #f7f5f0;
-      --panel: #ffffff;
-      --text: #1f2328;
-      --muted: #667085;
-      --line: #d9dee7;
-      --accent: #0f766e;
+      --bg: var(--app-bg);
+      --panel: var(--app-surface);
+      --text: var(--app-ink);
+      --muted: var(--app-muted);
+      --line: var(--app-line);
+      --accent: var(--app-accent);
       --accent-dark: #0b5f59;
       --warn: #b42318;
-      --soft: #eef6f5;
+      --soft: var(--app-accent-soft);
       --assistant: #ffffff;
       --user: #20312f;
       --radius: 8px;

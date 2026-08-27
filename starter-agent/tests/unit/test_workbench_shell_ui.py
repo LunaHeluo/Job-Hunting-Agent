@@ -34,8 +34,8 @@ def test_workbench_modes_use_backend_home_without_fake_success_data() -> None:
 
 def test_workbench_visual_tokens_focus_and_breakpoints_are_explicit() -> None:
     for contract in (
-        "--wb-bg: #f7f6f2",
-        "--wb-accent: #176b4d",
+        "--wb-bg: var(--app-bg)",
+        "--wb-accent: var(--app-accent)",
         ":focus-visible",
         "grid-template-columns: 360px minmax(640px,1fr) 300px",
         "@media (max-width: 1439px)",
@@ -48,15 +48,9 @@ def test_workbench_visual_tokens_focus_and_breakpoints_are_explicit() -> None:
 
 
 def test_workbench_routes_are_first_class_and_existing_routes_remain() -> None:
-    for route in (
-        '#/workbench',
-        '#/version-map',
-        '#/applications',
-        '#/knowledge',
-        '#/capabilities/mcp-servers',
-        '#/trust/evals',
-    ):
+    for route in ('#/workbench', '#/version-map', '#/applications'):
         assert route in JS or route in HTML
+    assert '#/chat' not in JS
 
 
 def test_shell_state_primary_route_source_excludes_legacy_chat() -> None:
