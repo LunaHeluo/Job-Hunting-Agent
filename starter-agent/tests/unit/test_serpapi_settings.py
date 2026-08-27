@@ -57,3 +57,19 @@ def test_unknown_profile_does_not_fall_back(monkeypatch) -> None:
     monkeypatch.setenv("SERPAPI_API_KEY", "must-not-be-used")
 
     assert settings.serpapi_api_key() == ("missing", None, None)
+
+
+def test_serpapi_key_falls_back_to_project_env_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("SERPAPI_ACTIVE_KEY", raising=False)
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    (tmp_path / ".env").write_text(
+        "SERPAPI_API_KEY=file-secret\n",
+        encoding="utf-8",
+    )
+    settings = make_settings().model_copy(update={"project_root": tmp_path})
+
+    assert settings.serpapi_api_key() == (
+        "primary",
+        "file-secret",
+        "SERPAPI_API_KEY",
+    )

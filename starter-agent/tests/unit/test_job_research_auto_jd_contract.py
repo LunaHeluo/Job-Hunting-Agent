@@ -6,7 +6,7 @@ from starter_agent.tools.registry import ToolRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
 SYSTEM_PROMPT = ROOT / "config" / "prompts" / "system.md"
-JOB_RESEARCH_SKILL = ROOT / "src" / "starter_agent" / "skills" / "job-research" / "SKILL.md"
+JOB_RESEARCH_SKILL = ROOT  / "backend" / "src" / "starter_agent" / "skills" / "job-research" / "SKILL.md"
 
 
 def test_system_prompt_allows_public_job_search_to_fetch_jd_without_selection() -> None:
@@ -39,8 +39,7 @@ def test_legacy_job_description_tool_is_absent_from_runtime_and_prompt() -> None
     }
     assert not (
         ROOT
-        / "src"
-        / "starter_agent"
+         / "backend" / "src" / "starter_agent"
         / "tools"
         / "builtin"
         / ("job_description" + "_search.py")

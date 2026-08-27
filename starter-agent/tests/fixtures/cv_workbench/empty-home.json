@@ -1,0 +1,20 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "workspace": null,
+  "resume_ids": [],
+  "job_ids": [],
+  "active_operation_ids": [],
+  "recent_application_ids": [],
+  "features": {
+    "manual_jd": true,
+    "stable_url": true,
+    "delegated_research": false,
+    "export_pdf": false,
+    "export_docx": false,
+    "email": false,
+    "unavailable_reasons": {
+      "delegated_research": "release_gate_closed",
+      "export_pdf": "not_implemented"
+    }
+  }
+}

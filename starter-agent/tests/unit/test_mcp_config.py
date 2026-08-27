@@ -27,7 +27,9 @@ def test_loads_playwright_config_referenced_by_main_settings() -> None:
 
     playwright = config.servers["playwright"]
     assert playwright.command == "npx"
-    assert playwright.args == ("@playwright/mcp@latest",)
+    # Runtime config is intentionally pinned for reproducible, reviewable browser behavior.
+    assert playwright.args == ("--yes", "@playwright/mcp@0.0.79")
+    assert all("@latest" not in value for value in playwright.args)
     assert playwright.cwd is None
     assert config.source_path == PROJECT_ROOT / "config" / "mcp.json"
 

@@ -1,0 +1,51 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "resume_id": "res_demo",
+  "revision": 3,
+  "nodes": [
+    {
+      "version_id": "rv_master_v1",
+      "branch_id": "rb_master",
+      "parent_version_id": null,
+      "node_type": "base",
+      "label": "Master v1",
+      "status": "confirmed",
+      "job_snapshot_id": null,
+      "upstream_changes_available": false,
+      "allowed_actions": ["create_direction_branch", "compare"]
+    },
+    {
+      "version_id": "rv_backend_v1",
+      "branch_id": "rb_backend",
+      "parent_version_id": "rv_master_v1",
+      "node_type": "direction",
+      "label": "Backend v1",
+      "status": "confirmed",
+      "job_snapshot_id": null,
+      "upstream_changes_available": true,
+      "allowed_actions": ["open_in_workbench", "merge_upstream"]
+    },
+    {
+      "version_id": "rv_acme_v1",
+      "branch_id": "rb_acme",
+      "parent_version_id": "rv_backend_v1",
+      "node_type": "company",
+      "label": "Acme Backend",
+      "status": "pending_confirmation",
+      "job_snapshot_id": "js_acme_v1",
+      "upstream_changes_available": false,
+      "allowed_actions": ["open_in_workbench", "compare"]
+    }
+  ],
+  "edges": [
+    {
+      "parent_version_id": "rv_master_v1",
+      "child_version_id": "rv_backend_v1"
+    },
+    {
+      "parent_version_id": "rv_backend_v1",
+      "child_version_id": "rv_acme_v1"
+    }
+  ],
+  "next_cursor": null
+}

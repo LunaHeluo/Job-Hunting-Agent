@@ -28,6 +28,8 @@ def test_job_research_fixture_manifest_loads_redacted_dataset() -> None:
         "policy",
         "injection",
         "knowledge_routing",
+        "orchestration_scenarios",
+        "delegation_scenarios",
     }
     assert {fixture.id for fixture in manifest.fixtures} == {
         "serpapi-ai-agent-redacted-v1",
@@ -42,6 +44,8 @@ def test_job_research_fixture_manifest_loads_redacted_dataset() -> None:
         "single-block-jd-redacted-v1",
         "job-posting-json-ld-redacted-v1",
         "browser-error-page-redacted-v1",
+        "orchestration-scenarios-redacted-v1",
+        "delegation-scenarios-redacted-v1",
     }
     assert all(fixture.content_hash == fixture.expected_hash for fixture in manifest.fixtures)
     assert all(fixture.record.redaction_summary for fixture in manifest.fixtures)

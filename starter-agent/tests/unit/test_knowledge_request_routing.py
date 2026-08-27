@@ -17,7 +17,7 @@ from starter_agent.skills.selector import SkillSelector
 
 
 SKILLS_ROOT = (
-    Path(__file__).parents[2] / "src" / "starter_agent" / "skills"
+    Path(__file__).parents[2]  / "backend" / "src" / "starter_agent" / "skills"
 )
 
 

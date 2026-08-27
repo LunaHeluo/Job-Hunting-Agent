@@ -1,0 +1,222 @@
+{
+  "workspace": {
+    "contract_version": "cv-workbench.v1",
+    "workspace_id": "ws_demo",
+    "owner_id": "local-user",
+    "name": "2026 秋招",
+    "target_roles": ["后端工程师", "Agent 工程师"],
+    "target_cities": ["上海", "杭州"],
+    "remote_preference": "hybrid",
+    "seniority": "mid",
+    "keywords": ["Python", "FastAPI", "RAG"],
+    "excluded_keywords": ["外包"],
+    "status": "active",
+    "revision": 2,
+    "created_at": "2026-08-17T08:00:00+08:00",
+    "updated_at": "2026-08-17T09:00:00+08:00",
+    "allowed_actions": ["edit", "pause", "archive"]
+  },
+  "resume": {
+    "contract_version": "cv-workbench.v1",
+    "resume_id": "res_demo",
+    "owner_id": "local-user",
+    "name": "技术简历",
+    "status": "active",
+    "latest_version_id": "rv_backend_v1",
+    "revision": 3,
+    "created_at": "2026-08-17T08:10:00+08:00",
+    "updated_at": "2026-08-17T09:10:00+08:00",
+    "allowed_actions": ["import", "create_branch", "archive"]
+  },
+  "branch": {
+    "contract_version": "cv-workbench.v1",
+    "branch_id": "rb_acme",
+    "resume_id": "res_demo",
+    "name": "Acme Backend",
+    "branch_type": "company",
+    "base_version_id": "rv_backend_v1",
+    "job_snapshot_id": "js_acme_v1",
+    "archived": false,
+    "revision": 1,
+    "created_at": "2026-08-17T09:20:00+08:00",
+    "updated_at": "2026-08-17T09:20:00+08:00",
+    "allowed_actions": ["create_version", "archive"]
+  },
+  "version": {
+    "contract_version": "cv-workbench.v1",
+    "version_id": "rv_acme_v1",
+    "resume_id": "res_demo",
+    "branch_id": "rb_acme",
+    "parent_version_id": "rv_backend_v1",
+    "branch_base_version_id": "rv_backend_v1",
+    "node_type": "company",
+    "version_number": 1,
+    "label": "Acme Backend v1",
+    "content": {
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "knowledge_base_id": "kb-demo",
+      "document_id": "doc-resume-demo",
+      "document_version_id": "docv-resume-demo-1",
+      "artifact_id": null
+    },
+    "status": "pending_confirmation",
+    "job_snapshot_id": "js_acme_v1",
+    "upstream_changes_available": false,
+    "revision": 1,
+    "created_by": "local-user",
+    "created_at": "2026-08-17T09:30:00+08:00",
+    "confirmed_at": null,
+    "allowed_actions": ["open_in_workbench", "confirm", "compare"]
+  },
+  "draft": {
+    "contract_version": "cv-workbench.v1",
+    "draft_id": "rd_acme_1",
+    "resume_id": "res_demo",
+    "base_version_id": "rv_acme_v1",
+    "branch_id": "rb_acme",
+    "content": {
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "knowledge_base_id": null,
+      "document_id": null,
+      "document_version_id": null,
+      "artifact_id": "artifact:draft:acme-1"
+    },
+    "revision": 4,
+    "status": "active",
+    "updated_by": "local-user",
+    "created_at": "2026-08-17T09:31:00+08:00",
+    "updated_at": "2026-08-17T09:40:00+08:00"
+  },
+  "job_candidate": {
+    "contract_version": "cv-workbench.v1",
+    "candidate_id": "jc_acme_backend",
+    "title": "Backend Engineer",
+    "company": "Acme Demo",
+    "location": "Shanghai",
+    "source_url": "https://jobs.example.test/acme/backend",
+    "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "created_at": "2026-08-17T09:00:00+08:00",
+    "expires_at": "2026-08-18T09:00:00+08:00",
+    "candidate_only": true
+  },
+  "job": {
+    "contract_version": "cv-workbench.v1",
+    "job_id": "job_acme_backend",
+    "owner_id": "local-user",
+    "title": "Backend Engineer",
+    "company": "Acme Demo",
+    "location": "Shanghai",
+    "user_status": "saved",
+    "revision": 1,
+    "created_at": "2026-08-17T09:10:00+08:00",
+    "updated_at": "2026-08-17T09:10:00+08:00",
+    "allowed_actions": ["analyze", "archive"]
+  },
+  "job_snapshot": {
+    "contract_version": "cv-workbench.v1",
+    "snapshot_id": "js_acme_v1",
+    "job_id": "job_acme_backend",
+    "title": "Backend Engineer",
+    "company": "Acme Demo",
+    "location": "Shanghai",
+    "source_url": "https://jobs.example.test/acme/backend",
+    "final_url": "https://jobs.example.test/acme/backend-v1",
+    "content": {
+      "content_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "knowledge_base_id": "kb-demo",
+      "document_id": "doc-job-acme",
+      "document_version_id": "docv-job-acme-1",
+      "artifact_id": null
+    },
+    "verified": true,
+    "captured_at": "2026-08-17T09:10:00+08:00",
+    "verified_at": "2026-08-17T09:11:00+08:00"
+  },
+  "suggestion": {
+    "contract_version": "cv-workbench.v1",
+    "suggestion_id": "sg_acme_summary",
+    "analysis_id": "ma_demo_validated",
+    "target_version_id": "rv_acme_v1",
+    "target_draft_id": "rd_acme_1",
+    "target_draft_revision": 4,
+    "block_id": "blk_summary",
+    "original_text": "构建后端服务。",
+    "proposed_text": "使用 Python 与 FastAPI 构建可观测的后端服务。",
+    "change_type": "strengthen_evidence",
+    "reason": "补充已有技术证据，避免空泛表述。",
+    "resume_evidence": [
+      {
+        "chunk_id": "chunk-demo-1",
+        "source_ref": "resume-demo.md@v1#L10-L12",
+        "content_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "quote": "使用 Python 与 FastAPI 构建服务"
+      }
+    ],
+    "requirement_ids": ["req_python"],
+    "risk": null,
+    "status": "pending",
+    "revision": 1,
+    "created_at": "2026-08-17T11:10:00+08:00",
+    "decided_at": null
+  },
+  "application": {
+    "contract_version": "cv-workbench.v1",
+    "application_id": "app_acme_backend",
+    "workspace_id": "ws_demo",
+    "job_snapshot_id": "js_acme_v1",
+    "resume_version_id": "rv_backend_v1",
+    "current_status": "to_apply",
+    "priority": 80,
+    "events": [
+      {
+        "event_id": "ae_acme_created",
+        "from_status": null,
+        "to_status": "to_decide",
+        "confirmed_by": "local-user",
+        "occurred_at": "2026-08-17T12:00:00+08:00",
+        "note": null
+      },
+      {
+        "event_id": "ae_acme_to_apply",
+        "from_status": "to_decide",
+        "to_status": "to_apply",
+        "confirmed_by": "local-user",
+        "occurred_at": "2026-08-17T12:05:00+08:00",
+        "note": "准备投递"
+      }
+    ],
+    "revision": 2,
+    "created_at": "2026-08-17T12:00:00+08:00",
+    "updated_at": "2026-08-17T12:05:00+08:00",
+    "allowed_actions": ["mark_applied", "withdraw"]
+  },
+  "export": {
+    "contract_version": "cv-workbench.v1",
+    "export_id": "exp_acme_pdf_v1",
+    "resume_version_id": "rv_backend_v1",
+    "format": "pdf",
+    "template_id": "ats-light",
+    "template_version": "1",
+    "settings_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "status": "available",
+    "artifact_id": "artifact:export:acme-pdf-v1",
+    "content_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "revision": 2,
+    "created_at": "2026-08-17T12:10:00+08:00",
+    "available_at": "2026-08-17T12:11:00+08:00"
+  },
+  "context": {
+    "contract_version": "cv-workbench.v1",
+    "context_epoch": 5,
+    "workspace_id": "ws_demo",
+    "resume_version_id": "rv_acme_v1",
+    "resume_branch_id": "rb_acme",
+    "lineage_focus_version_id": "rv_acme_v1",
+    "job_snapshot_id": "js_acme_v1",
+    "match_analysis_id": "ma_demo_validated",
+    "draft_id": "rd_acme_1",
+    "merge_proposal_id": null,
+    "ui_route": "workbench.match",
+    "selected_block_ids": ["blk_summary"]
+  }
+}

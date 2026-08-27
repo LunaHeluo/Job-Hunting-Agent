@@ -101,3 +101,26 @@ def test_programmatic_metrics_include_rule_prefixed_assertions() -> None:
     assert by_name["Tool / Argument Accuracy"].denominator == 2
     assert by_name["Citation Correctness"].value == 1.0
     assert by_name["Citation Correctness"].denominator == 2
+
+
+def test_programmatic_metrics_include_release_required_quality_and_failure_metrics() -> None:
+    result = _case("comparison", "passed").model_copy(
+        update={
+            "outcome_summary": {
+                "source_completeness": 0.82,
+                "evidence_fidelity": 0.91,
+                "failure_complexity": 1.5,
+            }
+        }
+    )
+    metrics = ProgrammaticMetricCalculator().calculate(
+        run_id="run-1",
+        case_results=[result],
+        assertion_results=[],
+    )
+    by_name = {metric.name: metric for metric in metrics}
+
+    assert by_name["Source Completeness"].value == 0.82
+    assert by_name["Evidence Fidelity"].value == 0.91
+    assert by_name["Failure Complexity"].value == 1.5
+    assert by_name["Source Completeness"].missing is False

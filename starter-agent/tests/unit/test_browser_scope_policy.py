@@ -126,6 +126,10 @@ def test_browser_sensitive_outbound_and_serpapi_fields_are_denied() -> None:
         {"keywords": "AI product manager", "location": "Shanghai"},
         ("job_keywords", "location"),
     )
+    policy_module.validate_serpapi_payload(
+        {"query": "上海的ai agent jobs", "limit": 5},
+        (),
+    )
     with pytest.raises(policy_module.ScopeDenied, match="serpapi_fields"):
         policy_module.validate_serpapi_payload(
             {"keywords": "AI PM", "resume": "private resume"},
@@ -142,3 +146,13 @@ def test_browser_click_accepts_only_structured_playwright_reference() -> None:
         policy_module.validate_browser_payload(
             "click", {"element": "Refresh", "ref": "e42", "script": "submit()"}
         )
+
+
+def test_browser_wait_for_accepts_only_bounded_official_schema_fields() -> None:
+    policy_module = _policy_module()
+    policy_module.validate_browser_payload("read", {"time": 1})
+    policy_module.validate_browser_payload("read", {"text": "Job details"})
+    with pytest.raises(policy_module.ScopeDenied, match="browser_payload"):
+        policy_module.validate_browser_payload("read", {"time": 36})
+    with pytest.raises(policy_module.ScopeDenied, match="browser_payload"):
+        policy_module.validate_browser_payload("read", {"time": 1, "script": "submit()"})

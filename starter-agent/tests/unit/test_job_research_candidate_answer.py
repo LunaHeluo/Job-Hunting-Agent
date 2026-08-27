@@ -78,6 +78,39 @@ def test_complete_jd_uses_selectable_candidate_template_and_all_sections() -> No
     assert answer.splitlines()[-1].startswith("请选择 Candidate 编号或 Candidate ID")
 
 
+def test_missing_company_uses_evidence_aware_labels() -> None:
+    complete = _complete_job()
+    complete["company"] = ""
+    answer = _public_job_search_answer(
+        search_result=_search_result(),
+        jd_result=ToolResult(
+            ok=True,
+            data={
+                "jobs": [complete],
+                "partial_jobs": [
+                    {
+                        "title": "Partial AI Agent Engineer",
+                        "company": "",
+                        "location": "北京",
+                        "source_url": "https://partial.example.test/job/7",
+                        "snippet": (
+                            "岗位职责：开发智能体应用。"
+                            "任职要求：熟悉 Python 和大模型。"
+                        ),
+                    }
+                ],
+                "candidate_attempts": [],
+                "candidate_limit": 10,
+                "target_count": 2,
+            },
+        ),
+    )
+
+    assert "- 公司：公司未披露" in answer
+    assert "Partial AI Agent Engineer · 公司未核实 · 北京" in answer
+    assert "未知公司" not in answer
+
+
 def test_failed_and_partial_urls_are_hidden_when_complete_target_is_met() -> None:
     failed_url = "https://blocked.example.test/job/blocked"
     partial_url = "https://partial.example.test/job/partial"

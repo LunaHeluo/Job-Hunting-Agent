@@ -661,7 +661,24 @@ async def test_real_playwright_mcp_initializes_and_discovers(
         ui = FastAPI()
         ui.include_router(create_capabilities_router())
         ui.dependency_overrides[get_capability_services] = lambda: services
-        html = (PROJECT_ROOT / "src/web/index.html").read_text(encoding="utf-8")
+        html = (PROJECT_ROOT / "frontend/web/index.html").read_text(encoding="utf-8")
+        css = (PROJECT_ROOT / "frontend/web/styles/legacy.css").read_text(encoding="utf-8")
+        script = (PROJECT_ROOT / "frontend/web/app.js").read_text(encoding="utf-8")
+        # The fixture serves a single HTML route; inline split assets while preserving
+        # the production module layout exercised by static contract tests.
+        script = "\n".join(
+            line for line in script.splitlines() if not line.startswith("import ")
+        ).replace(
+            "window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, createStore });",
+            "",
+        )
+        html = html.replace(
+            '<link rel="stylesheet" href="./styles/app.css">',
+            f"<style>{css}</style>",
+        ).replace(
+            '<script type="module" src="./app.js"></script>',
+            f"<script>{script}</script>",
+        )
         html = html.replace(
             'id="apiBase" value="http://127.0.0.1:8000"',
             f'id="apiBase" value="{ui_origin}"',

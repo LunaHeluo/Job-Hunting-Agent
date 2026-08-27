@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=20260821-contextual-workbench-title";
-import { createJobMatching } from "./job-matching.js?v=20260821-job-rail-overview";
+import { createResumeWorkspace } from "./resume-workspace.js?v=20260823-workbench-polish";
+import { createJobMatching } from "./job-matching.js?v=20260823-workbench-polish";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js";
@@ -77,6 +77,99 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
   const applicationsBoard = createApplicationsBoard({ request, elements: { main: elements.main } });
 
+  const STAGES = Object.freeze({
+    A: {
+      key: "profile",
+      eyebrow: "当前阶段 · 未建档",
+      title: "先建立可信简历档案",
+      description: "上传 DOCX 或 PDF，系统只会使用解析并确认后的内容。",
+      primary: "上传简历",
+    },
+    B: {
+      key: "job",
+      eyebrow: "当前阶段 · 待投递",
+      title: "添加一个目标岗位",
+      description: "简历已经就绪。粘贴 JD、上传文件或使用稳定链接，确认后再开始匹配。",
+      primary: "导入岗位 JD",
+      secondary: "查看当前档案",
+    },
+    C: {
+      key: "analysis",
+      eyebrow: "当前阶段 · 分析中",
+      title: "验证岗位要求与简历证据",
+      description: "选择已确认的简历版本和岗位快照，查看匹配依据、短板和下一步建议。",
+      primary: "开始匹配分析",
+      secondary: "查看当前档案",
+    },
+  });
+
+  function replaceAgentActions(stage) {
+    const actions = {
+      A: [
+        ["prepare_resume", "如何准备简历"],
+      ],
+      B: [
+        ["ai_edit_resume", "AI 修改简历"],
+        ["rewrite_section", "哪块最应该改"],
+        ["compare_versions", "比较简历版本"],
+      ],
+      C: [
+        ["ai_edit_resume", "AI 修改简历"],
+        ["tailor_resume", "AI 定制简历"],
+        ["explain_score", "解释匹配分数"],
+        ["rewrite_section", "短板怎么补"],
+      ],
+    }[stage];
+    elements.agentActions.replaceChildren(...actions.map(([action, label]) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.dataset.agentAction = action;
+      item.textContent = label;
+      return item;
+    }));
+  }
+
+  function renderStage(stage, stats) {
+    const config = STAGES[stage];
+    elements.view.dataset.stage = config.key;
+    elements.stageResume.dataset.state = stage === "A" ? "current" : "done";
+    elements.stageJob.dataset.state = stage === "A" ? "pending" : stage === "B" ? "current" : "done";
+    elements.stageAnalysis.dataset.state = stage === "C" ? "current" : "pending";
+    elements.stageEyebrow.textContent = config.eyebrow;
+    elements.stageTitle.textContent = stats.active_operation_count > 0 && stage === "C"
+      ? "分析任务正在执行"
+      : config.title;
+    elements.stageDescription.textContent = stats.active_operation_count > 0 && stage === "C"
+      ? `当前有 ${stats.active_operation_count} 个任务在执行；可以在左侧查看实时进度。`
+      : config.description;
+    elements.stagePrimary.textContent = stats.active_operation_count > 0 && stage === "C"
+      ? "分析任务进行中"
+      : config.primary;
+    elements.stagePrimary.disabled = stats.active_operation_count > 0 && stage === "C";
+    elements.stageSecondary.hidden = !config.secondary;
+    elements.stageSecondary.textContent = config.secondary || "";
+    elements.candidateRail.hidden = stage === "A";
+    elements.matchTab.disabled = stage === "A";
+    elements.matchTab.title = stage === "A" ? "先上传简历建档" : "";
+    replaceAgentActions(stage);
+    elements.tailorResumeButton.hidden = stage !== "C";
+    elements.tailorResumeButton.onclick = () => {
+      elements.agentActions.querySelector('[data-agent-action="tailor_resume"]')?.click();
+    };
+
+    elements.stagePrimary.onclick = () => {
+      if (stage === "A") return resumeWorkspace.renderImport(activeWorkspaceId || null);
+      if (stage === "B") return jobMatching.renderJobForm(activeWorkspaceId);
+      showContentPanel("match");
+      jobMatching.renderMatchChooser(activeWorkspaceId);
+    };
+    elements.stageSecondary.onclick = () => {
+      showContentPanel("archive");
+      const version = currentHome?.recent_versions?.[0];
+      if (version) void resumeWorkspace.renderResumePreview(activeWorkspaceId, version.version_id, version.label);
+    };
+  }
+
   function setStepStates(stats, mode) {
     const states = {
       resume: stats.resume_count > 0 ? "done" : "current",
@@ -92,6 +185,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   function renderHome(home) {
     currentHome = home;
     const stats = home.stats || {};
+    // 阶段只由后端 home 统计推导，不会显示虚假统计或模拟成功状态。
     const mode = !stats.resume_count ? "A" : !stats.job_count ? "B" : "C";
     const copy = {
       A: ["建立你的第一份简历档案", "导入 DOCX 或 PDF；首次导入会自动创建本地求职档案。"],
@@ -110,6 +204,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.agentContext.textContent = stats.resume_count
       ? `当前上下文：${home.workspace?.name || "求职目标"}；Agent 不会自动提交修改。`
       : "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。";
+    renderStage(mode, stats);
     setStepStates(stats, mode);
     setStatus(`已加载 ${home.workspace?.name || "工作台"} · revision ${home.workspace?.revision || 0}`);
     if (home.workspace?.workspace_id) {
@@ -126,13 +221,20 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     );
     if (activeRoute === "workbench") {
       jobMatching.renderJobList(home, activeWorkspaceId);
-      if (home.recent_versions?.[0]) {
+      if (mode === "C") {
+        showContentPanel("match");
+        void jobMatching.renderMain(home, activeWorkspaceId);
+      } else if (home.recent_versions?.[0]) {
         showContentPanel("archive");
         void resumeWorkspace.renderResumePreview(
           activeWorkspaceId,
           home.recent_versions[0].version_id,
           home.recent_versions[0].label,
         );
+      } else {
+        showContentPanel("archive");
+        elements.main.className = "workbench-empty workbench-stage-empty";
+        elements.main.textContent = "上传现有简历后，这里会展示结构化档案预览。";
       }
       operationMonitor.load(activeWorkspaceId);
     } else if (activeRoute === "applications") {
@@ -206,5 +308,12 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.title.textContent = route === "version-map" ? "版本地图" : route === "applications" ? "投递看板" : elements.title.textContent;
     await load(true);
   }
-  return Object.freeze({ activate, load });
+  async function tailorResume(context) {
+    const workspaceId = context?.workspace_id || activeWorkspaceId;
+    const analysisId = context?.match_analysis_id;
+    if (!workspaceId || !analysisId) throw new Error("需要当前求职目标和匹配分析");
+    showContentPanel("match");
+    await jobMatching.prepareTailoredResume(workspaceId, analysisId);
+  }
+  return Object.freeze({ activate, load, tailorResume });
 }

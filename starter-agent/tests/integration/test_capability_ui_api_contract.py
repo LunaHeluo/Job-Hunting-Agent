@@ -3,7 +3,8 @@ import json
 import subprocess
 
 
-HTML = Path("src/web/index.html").read_text(encoding="utf-8")
+WEB = Path("frontend/web")
+HTML = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "index.html", *sorted(WEB.rglob("*.css")), *sorted(WEB.rglob("*.js"))))
 LOGIC_START = "/* capability-ui-logic:start */"
 LOGIC_END = "/* capability-ui-logic:end */"
 
