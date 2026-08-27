@@ -492,19 +492,25 @@ import {{ createRouteActivationCoordinator }} from {json.dumps(module_url)};
 const deferred = new Map();
 const restored = [];
 const scheduled = [];
+let renderedRoute = "workbench";
+const captured = [];
+const scrollTop = {{ workbench: 11, "version-map": 29, applications: 47 }};
 const coordinator = createRouteActivationCoordinator({{
   activate: route => new Promise(resolve => deferred.set(route, resolve)),
-  onStart() {{}},
+  onStart() {{ captured.push([renderedRoute, scrollTop[renderedRoute]]); }},
+  onActivated: route => {{ renderedRoute = route; }},
   onCurrent: route => restored.push(route),
   schedule: callback => scheduled.push(callback),
 }});
 const first = coordinator.apply("version-map");
-const second = coordinator.apply("applications");
-deferred.get("applications")();
-await second;
-scheduled.splice(0).forEach(callback => callback());
 deferred.get("version-map")();
 await first;
+assert.deepEqual(captured, [["workbench", 11]]);
+assert.equal(renderedRoute, "version-map", "ownership advances before its restore frame");
+const second = coordinator.apply("applications");
+assert.deepEqual(captured, [["workbench", 11], ["version-map", 29]]);
+deferred.get("applications")();
+await second;
 scheduled.splice(0).forEach(callback => callback());
 assert.deepEqual(restored, ["applications"]);
 '''
@@ -516,3 +522,79 @@ assert.deepEqual(restored, ["applications"]);
     )
     assert result.returncode == 0, result.stderr
     assert "createRouteActivationCoordinator" in APP
+
+
+def test_real_shell_discards_late_version_map_render_after_applications_renders() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ createWorkbenchShell }} from {json.dumps(module_url)};
+
+class Element {{
+  constructor(tagName = "div") {{
+    this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map();
+    this.dataset = {{}}; this.className = ""; this.textContent = ""; this.value = "";
+    this.style = {{ setProperty() {{}} }}; this.classList = {{ add() {{}}, remove() {{}} }};
+    this.hidden = false; this.disabled = false;
+  }}
+  append(...items) {{ this.children.push(...items); }}
+  replaceChildren(...items) {{ this.children = [...items]; }}
+  addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
+  setAttribute() {{}}
+  querySelector() {{ return null; }}
+  closest() {{ return new Element(); }}
+  add(item) {{ this.children.push(item); }}
+}}
+globalThis.document = {{ createElement: tagName => new Element(tagName), querySelector: () => null }};
+globalThis.Option = class Option extends Element {{ constructor(text, value) {{ super("option"); this.textContent = text; this.value = value; }} }};
+globalThis.localStorage = {{ getItem: () => "workspace_1", setItem() {{}} }};
+globalThis.window = {{ dispatchEvent() {{}}, clearTimeout() {{}}, setTimeout() {{}} }};
+globalThis.CustomEvent = class CustomEvent {{ constructor(type, init) {{ this.type = type; this.detail = init.detail; }} }};
+let resolveMap;
+const response = payload => ({{ ok: true, json: async () => payload }});
+globalThis.fetch = async url => {{
+  const path = String(url);
+  if (path.includes("/version-map")) return new Promise(resolve => {{ resolveMap = () => resolve(response({{ nodes: [], edges: [] }})); }});
+  if (path.includes("/view-preference")) return response({{ node_positions: {{}}, collapsed_branch_ids: [], viewport_zoom: 1 }});
+  if (path.includes("workspaces?")) return response({{ items: [{{ workspace_id: "workspace_1", name: "Target" }}] }});
+  if (path.includes("/home")) return response({{
+    stats: {{ resume_count: 1, job_count: 1, active_operation_count: 0 }},
+    recent_versions: [{{ resume_id: "resume_1", version_id: "version_1", label: "Base" }}],
+    workspace: {{ workspace_id: "workspace_1", name: "Target", revision: 1 }},
+  }});
+  if (path.includes("/applications?")) return response({{ items: [] }});
+  if (path.includes("/analytics/funnel")) return response({{ definition_version: "v1", stages: [] }});
+  if (path.includes("/reminders?")) return response({{ items: [] }});
+  if (path.includes("/content?")) return response({{ markdown: "", profile: null }});
+  return response({{ items: [] }});
+}};
+const element = () => new Element();
+const main = element();
+const shell = createWorkbenchShell({{
+  getApiBase: () => "",
+  elements: {{
+    status: element(), workspace: element(), jobCount: element(), jobList: element(), agentContext: element(), operationCards: element(),
+    mode: element(), title: element(), main, match: element(), archiveTab: element(), matchTab: element(), view: element(), candidateRail: element(),
+    stageResume: element(), stageJob: element(), stageAnalysis: element(), stageEyebrow: element(), stageTitle: element(), stageDescription: element(),
+    stagePrimary: element(), stageSecondary: element(), agentActions: element(), taskCenter: element(), tailorResumeButton: element(),
+    contextTitle: element(), contextMeta: element(), contextDescription: element(), contextContent: element(), actionBar: element(), actionStatus: element(),
+    resumeList: element(),
+  }},
+}});
+const versionMap = shell.activate("version-map");
+for (let turn = 0; turn < 8 && !resolveMap; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveMap, "function", "Version Map child loader is in flight");
+const applications = shell.activate("applications");
+await applications;
+assert.equal(main.children[0]?.className, "applications-board", "Applications rendered before the late map response");
+resolveMap();
+await versionMap;
+assert.equal(main.children[0]?.className, "applications-board", "late Version Map cannot replace Applications");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr

@@ -17,8 +17,9 @@ export function createApplicationsBoard({ request, elements, onApplicationSelect
   let workspaceId = "";
   let activeCard = null;
 
-  async function render(nextWorkspaceId, query = "", status = "") {
+  async function render(nextWorkspaceId, query = "", status = "", { isCurrent = () => true } = {}) {
     workspaceId = nextWorkspaceId;
+    if (!isCurrent()) return;
     elements.main.textContent = "正在加载投递看板…";
     try {
       const params = new URLSearchParams({ workspace_id: workspaceId });
@@ -29,8 +30,9 @@ export function createApplicationsBoard({ request, elements, onApplicationSelect
         request(`/v1/workbench/analytics/funnel?workspace_id=${encodeURIComponent(workspaceId)}`),
         request(`/v1/workbench/reminders?workspace_id=${encodeURIComponent(workspaceId)}`),
       ]);
+      if (!isCurrent()) return;
       renderBoard(page.items || [], query, status, funnel, reminders);
-    } catch (error) { elements.main.textContent = `投递看板加载失败：${error.message}`; }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `投递看板加载失败：${error.message}`; }
   }
 
   function renderBoard(items, query, status, funnel, reminders) {

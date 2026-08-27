@@ -4101,8 +4101,10 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         applicationsPageTab.setAttribute("aria-current", route === "applications" ? "page" : "false");
       },
       activate: route => workbenchShell.activate(route),
-      onCurrent(route) {
+      onActivated(route) {
         renderedPrimaryRoute = route;
+      },
+      onCurrent(route) {
         restoreRouteScroll(route);
       },
     });

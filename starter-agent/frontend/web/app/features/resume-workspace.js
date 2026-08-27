@@ -213,7 +213,8 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
 
   function cleanResumeLine(line) { return line.replace(/^\s*(?:#{1,6}\s*|[-*+•]\s*)/, "").replace(/[*_`]/g, "").trim(); }
 
-  async function renderVersionMap(workspaceId, resumeId) {
+  async function renderVersionMap(workspaceId, resumeId, { isCurrent = () => true } = {}) {
+    if (!isCurrent()) return;
     activeResumeId = resumeId;
     elements.main.textContent = "正在加载版本血缘…";
     try {
@@ -221,6 +222,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/version-map`),
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/view-preference`).catch(error => error.status === 404 ? null : Promise.reject(error)),
       ]);
+      if (!isCurrent()) return;
       activeMap = map;
       let preference = savedPreference || { node_positions: {}, collapsed_branch_ids: [], viewport_x: 0, viewport_y: 0, viewport_zoom: 1, revision: null };
       let preferenceTimer = null;
@@ -234,10 +236,11 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
               body: JSON.stringify({ node_positions: preference.node_positions || {}, collapsed_branch_ids: preference.collapsed_branch_ids || [], viewport_x: preference.viewport_x || 0, viewport_y: preference.viewport_y || 0, viewport_zoom: preference.viewport_zoom || 1, expected_revision: preference.revision || null }),
             });
             preference = saved;
-          } catch (error) { elements.status.textContent = `视图偏好保存失败（业务血缘未改变）：${error.message}`; }
+          } catch (error) { if (isCurrent()) elements.status.textContent = `视图偏好保存失败（业务血缘未改变）：${error.message}`; }
         }, 250);
       };
       graph.render(elements.main, map, async (node, event) => {
+        if (!isCurrent()) return;
         if (event.shiftKey && selectedNode && selectedNode.version_id !== node.version_id) {
           await renderDiff(workspaceId, selectedNode, node);
           return;
@@ -247,7 +250,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         onVersionSelect(node, { inspectorMount: elements.jobs });
         renderInspector(workspaceId, node);
       }, { preference, onPreferenceChange: savePreference });
-    } catch (error) { elements.main.textContent = `版本地图加载失败：${error.message}`; }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `版本地图加载失败：${error.message}`; }
   }
 
   function renderInspector(workspaceId, node) {
@@ -445,7 +448,8 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     elements.main.replaceChildren(panel); refresh();
   }
 
-  function renderResumeList(home, route, workspaceId) {
+  function renderResumeList(home, route, workspaceId, { isCurrent = () => true } = {}) {
+    if (!isCurrent()) return;
     const profileName = document.querySelector("#workbenchProfileName");
     const profileCaption = document.querySelector("#workbenchProfileCaption");
     const reupload = document.querySelector("#workbenchResumeReupload");
@@ -465,9 +469,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     if (profileName) profileName.textContent = home.recent_versions[0].label;
     if (profileCaption) profileCaption.textContent = `${home.recent_versions.length} 个档案版本`;
     void request(`/v1/workbench/resume-versions/${encodeURIComponent(home.recent_versions[0].version_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`)
-      .then(content => updateProfileMetrics(content.markdown, content.profile))
-      .catch(() => updateProfileMetrics(""));
-    if (route === "version-map") renderVersionMap(workspaceId, home.recent_versions[0].resume_id);
+      .then(content => { if (isCurrent()) updateProfileMetrics(content.markdown, content.profile); })
+      .catch(() => { if (isCurrent()) updateProfileMetrics(""); });
+    if (route === "version-map") return renderVersionMap(workspaceId, home.recent_versions[0].resume_id, { isCurrent });
   }
 
   return Object.freeze({ renderImport, renderResumeList, renderResumePreview, renderVersionMap });
