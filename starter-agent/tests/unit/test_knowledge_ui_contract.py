@@ -7,7 +7,6 @@ HTML = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "index.html
 
 def test_primary_navigation_and_knowledge_controls_exist() -> None:
     for contract in (
-        'id="chatNavButton"',
         'id="knowledgeNavButton"',
         'id="knowledgeView"',
         'id="knowledgeFile"',
@@ -25,6 +24,13 @@ def test_primary_navigation_and_knowledge_controls_exist() -> None:
     assert '<option value="auto" selected>' in HTML
     assert '<option value="off">' in HTML
     assert 'id="chatKnowledgeMode" type="checkbox"' not in HTML
+
+
+def test_knowledge_navigation_stays_in_settings_and_knowledge_view_in_advanced_dialog() -> None:
+    settings = HTML.split('id="settingsOverlay"', 1)[1]
+    advanced_dialog = HTML.split('id="advancedDialog"', 1)[1]
+    assert 'id="knowledgeNavButton"' in settings
+    assert 'id="knowledgeView"' in advanced_dialog
 
 
 def test_knowledge_ui_calls_lifecycle_apis_and_uses_safe_rendering() -> None:

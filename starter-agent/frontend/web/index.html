@@ -9,92 +9,15 @@
   <link rel="stylesheet" href="./styles/app.css?v=20260823-workbench-polish">
 </head>
 <body>
-  <main class="app">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="brand">
-          <h2 class="brand-title">Starter Agent</h2>
-          <p class="brand-subtitle">本地会话</p>
-        </div>
-        <div class="sidebar-header-actions">
-          <button id="settingsButton" class="sidebar-settings-button" type="button" title="设置">
-            <span aria-hidden="true">⚙</span>
-            <span>设置</span>
-          </button>
-          <button id="newSessionButton" type="button" title="新建会话">新建</button>
-        </div>
-      </div>
-      <nav class="primary-nav" aria-label="主导航">
-        <button id="workbenchNavButton" type="button">简历工作台</button>
-        <button id="versionMapNavButton" type="button">版本地图</button>
-        <button id="chatNavButton" type="button" aria-current="page">对话</button>
-      </nav>
-      <div class="sidebar-clear-row">
-        <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">
-          清除全部
-        </button>
-      </div>
-      <div id="sessionList" class="session-list">
-        <div class="session-empty">正在加载会话...</div>
-      </div>
-    </aside>
+  <main id="appShell" class="app-shell">
 
-    <section id="chatView" class="main">
-      <header class="topbar">
-        <div>
-          <h1>求职 Agent 对话</h1>
-          <div id="status" class="status">准备连接本地 API</div>
-          <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
-        </div>
-        <div class="settings">
-          <div class="field">
-            <label for="apiBase">API</label>
-            <input id="apiBase" value="http://127.0.0.1:8000">
-          </div>
-          <div class="field">
-            <label for="providerSelect">Provider</label>
-            <select id="providerSelect">
-              <option value="">使用后端默认</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="modelSelect">Model</label>
-            <select id="modelSelect">
-              <option value="">使用后端默认</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="chatKnowledgeMode">知识库问答</label>
-            <select id="chatKnowledgeMode">
-              <option value="auto" selected>自动</option>
-              <option value="off">关闭</option>
-            </select>
-          </div>
-        </div>
-      </header>
-
-      <div id="chatDock">
-        <div id="messages" class="messages" aria-live="polite"></div>
-        <div
-          id="chatConfirmationCards"
-          class="chat-confirmation-cards"
-          aria-live="polite"
-        ></div>
-        <div id="delegationTaskCards" class="delegation-task-cards" aria-live="polite"></div>
-        <section id="delegationRunDetail" class="delegation-run-detail" hidden aria-live="polite"></section>
-
-        <footer class="composer-wrap">
-          <div id="toolMenu" class="tool-menu" hidden></div>
-          <form id="composer" class="composer">
-            <textarea id="messageInput" placeholder="输入消息，Enter 发送" rows="2"></textarea>
-            <button id="clearButton" type="button">清空</button>
-            <button id="sendButton" class="send" type="submit">发送</button>
-          </form>
-          <div class="composer-note">Shift + Enter 换行</div>
-        </footer>
-      </div>
-    </section>
-
+    <div id="advancedOverlay" class="advanced-overlay" hidden>
+      <section id="advancedDialog" class="advanced-dialog" role="dialog" aria-modal="true" aria-labelledby="advancedTitle">
+        <header class="advanced-dialog-header">
+          <h2 id="advancedTitle"></h2>
+          <button id="advancedCloseButton" type="button" aria-label="关闭窗口">×</button>
+        </header>
+        <div class="advanced-dialog-body">
     <section id="knowledgeView" class="knowledge-view" hidden>
       <div class="knowledge-layout">
         <section class="knowledge-card knowledge-upload-card">
@@ -300,10 +223,14 @@
       </div>
     </section>
 
-    <section id="workbenchView" class="workbench-view" hidden aria-labelledby="workbenchTitle">
+        </div>
+      </section>
+    </div>
+
+    <section id="workbenchView" class="workbench-view" aria-labelledby="workbenchTitle">
       <header class="workbench-topbar">
         <div class="workbench-brand"><strong>Resume Agent</strong></div>
-        <nav class="workbench-primary-tabs" aria-label="简历工作台导航">
+        <nav id="primaryNavigation" class="workbench-primary-tabs" aria-label="主导航">
           <button id="workbenchPageTab" type="button" aria-current="page">工作台</button>
           <button id="versionMapPageTab" type="button">版本地图</button>
           <button id="applicationsPageTab" type="button">投递看板</button>
@@ -320,7 +247,7 @@
       </nav>
       <div class="workbench-layout">
         <aside class="workbench-left" aria-label="简历档案与 Agent">
-          <section class="workbench-card workbench-profile-card">
+          <section class="workbench-card workbench-profile-card" aria-label="简历档案">
             <div class="workbench-profile-identity">
               <strong id="workbenchProfileName">我的档案</strong>
               <span id="workbenchProfileCaption">尚未导入简历</span>
@@ -333,6 +260,12 @@
               <span><strong id="workbenchSkillCount">—</strong> 技能</span>
             </div>
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传新档案</button></div>
+            <div class="sidebar-header-actions">
+              <button id="settingsButton" class="sidebar-settings-button" type="button" title="设置"><span aria-hidden="true">⚙</span><span>设置</span></button>
+              <button id="newSessionButton" type="button" title="新建会话">新建</button>
+              <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
+            </div>
+            <div id="sessionList" class="session-list"><div class="session-empty">正在加载会话...</div></div>
           </section>
           <section class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
             <div class="workbench-section-heading workbench-agent-heading">
@@ -342,7 +275,23 @@
                 <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
               </div>
             </div>
-            <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话"></div>
+            <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话">
+              <div id="status" class="status">准备连接本地 API</div>
+              <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
+              <div class="settings">
+                <div class="field"><label for="apiBase">API</label><input id="apiBase" value="http://127.0.0.1:8000"></div>
+                <div class="field"><label for="providerSelect">Provider</label><select id="providerSelect"><option value="">使用后端默认</option></select></div>
+                <div class="field"><label for="modelSelect">Model</label><select id="modelSelect"><option value="">使用后端默认</option></select></div>
+                <div class="field"><label for="chatKnowledgeMode">知识库问答</label><select id="chatKnowledgeMode"><option value="auto" selected>自动</option><option value="off">关闭</option></select></div>
+              </div>
+              <div id="chatDock">
+                <div id="messages" class="messages" aria-live="polite"></div>
+                <div id="chatConfirmationCards" class="chat-confirmation-cards" aria-live="polite"></div>
+                <div id="delegationTaskCards" class="delegation-task-cards" aria-live="polite"></div>
+                <section id="delegationRunDetail" class="delegation-run-detail" hidden aria-live="polite"></section>
+                <footer class="composer-wrap"><div id="toolMenu" class="tool-menu" hidden></div><form id="composer" class="composer"><textarea id="messageInput" placeholder="输入消息，Enter 发送" rows="2"></textarea><button id="clearButton" type="button">清空</button><button id="sendButton" class="send" type="submit">发送</button></form><div class="composer-note">Shift + Enter 换行</div></footer>
+              </div>
+            </div>
             <div id="workbenchAgentSuggestions" class="workbench-agent-suggestions">
               <span class="workbench-agent-suggestions-label">你可以试试</span>
               <div id="workbenchAgentActions" class="workbench-agent-actions">
@@ -367,7 +316,7 @@
             </details>
           </section>
         </aside>
-        <main class="workbench-main" aria-labelledby="workbenchTitle">
+        <main id="workspaceCanvas" class="workbench-main" aria-labelledby="workbenchTitle">
           <section class="workbench-card workbench-canvas">
             <section id="workbenchStageCallout" class="workbench-stage-callout" aria-live="polite">
               <div>
@@ -389,11 +338,11 @@
             <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
           </section>
         </main>
-        <aside id="workbenchCandidateRail" class="workbench-right" aria-label="岗位候选">
-          <section class="workbench-card">
-            <div class="workbench-section-heading"><h2>岗位候选</h2><span id="workbenchJobCount">—</span></div>
-            <p class="workbench-helper">确认后的 JD 可在这里快速查看，并进入完整匹配分析。</p>
-            <div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div>
+        <aside id="contextRail" class="workbench-right">
+          <section id="workbenchCandidateRail" class="workbench-card workbench-context-card">
+            <div class="workbench-section-heading"><h2 id="workbenchContextTitle">岗位候选</h2><span id="workbenchContextMeta"><span id="workbenchJobCount">—</span></span></div>
+            <p id="workbenchContextDescription" class="workbench-helper">确认后的 JD 可在这里快速查看，并进入完整匹配分析。</p>
+            <div id="workbenchContextContent"><div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div></div>
           </section>
         </aside>
       </div>
