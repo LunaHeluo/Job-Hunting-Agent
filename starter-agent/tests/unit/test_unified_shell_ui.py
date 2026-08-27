@@ -606,6 +606,138 @@ assert.equal(main.children[0]?.className, "applications-board", "late Version Ma
     assert result.returncode == 0, result.stderr
 
 
+def _real_shell_merge_fixture(module_url: str) -> str:
+    return r'''
+import assert from "node:assert/strict";
+import { createWorkbenchShell } from __MODULE_URL__;
+
+class Element {
+  constructor(tagName = "div") {
+    this.tagName = tagName.toUpperCase(); this.children = []; this.listeners = new Map();
+    this.dataset = {}; this.className = ""; this._textContent = ""; this.value = "";
+    this.style = { setProperty() {} }; this.parentElement = null; this.hidden = false; this.disabled = false;
+    this.classList = {
+      add: token => { this.className = `${this.className} ${token}`.trim(); },
+      remove: token => { this.className = this.className.split(/\s+/).filter(item => item && item !== token).join(" "); },
+      toggle: (token, active) => active ? this.classList.add(token) : this.classList.remove(token),
+    };
+  }
+  get textContent() { return this._textContent; }
+  set textContent(value) { this._textContent = String(value); for (const child of this.children) child.parentElement = null; this.children = []; }
+  append(...items) { for (const item of items) {
+    if (item.parentElement) item.parentElement.children = item.parentElement.children.filter(child => child !== item);
+    item.parentElement = this; this.children.push(item);
+  } }
+  prepend(...items) { this.replaceChildren(...items, ...this.children); }
+  replaceChildren(...items) { for (const child of this.children) child.parentElement = null; this.children = []; this._textContent = ""; this.append(...items); }
+  add(item) { this.append(item); }
+  addEventListener(type, listener) { this.listeners.set(type, listener); }
+  emit(type, event = {}) { return this.listeners.get(type)?.({ currentTarget: this, target: this, ...event }); }
+  setAttribute(name, value) { this[name] = value; }
+  querySelectorAll(selector) {
+    const all = this.children.flatMap(child => [child, ...child.querySelectorAll(selector)]);
+    if (selector.startsWith(".")) {
+      const token = selector.slice(1);
+      return all.filter(item => item.className.split(/\s+/).includes(token));
+    }
+    if (selector === '[role="treeitem"]') return all.filter(item => item.role === "treeitem");
+    return [];
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  get lastElementChild() { return this.children.at(-1) || null; }
+  contains(target) { for (let node = target; node; node = node.parentElement) if (node === this) return true; return false; }
+  closest() { return new Element(); }
+  focus() {}
+  remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; }
+}
+
+globalThis.document = { createElement: tagName => new Element(tagName), querySelector: () => null };
+globalThis.Option = class Option extends Element { constructor(text, value) { super("option"); this.textContent = text; this.value = value; } };
+globalThis.localStorage = { getItem: () => "workspace_1", setItem() {} };
+globalThis.window = { dispatchEvent() {}, clearTimeout() {}, setTimeout() { return 1; }, prompt: (_label, fallback) => fallback };
+globalThis.CustomEvent = class CustomEvent { constructor(type, init) { this.type = type; this.detail = init.detail; } };
+
+const response = (payload, ok = true, status = 200) => ({ ok, status, json: async () => payload });
+const versionMap = {
+  nodes: [
+    { version_id: "base_1", branch_id: "branch_base", label: "共同祖先", status: "confirmed", node_type: "base", revision: 1 },
+    { version_id: "upstream_1", branch_id: "branch_upstream", parent_version_id: "base_1", label: "上游版本", status: "confirmed", node_type: "direction", revision: 2 },
+    { version_id: "target_1", branch_id: "branch_target", parent_version_id: "base_1", label: "目标版本", status: "confirmed", node_type: "company", revision: 3 },
+  ],
+  edges: [],
+};
+
+function createShellFixture(createMergeRequest) {
+  globalThis.fetch = async (url, options = {}) => {
+    const path = String(url);
+    if (path.endsWith("/v1/workbench/merge-proposals") && options.method === "POST") return createMergeRequest();
+    if (path.includes("/version-map")) return response(versionMap);
+    if (path.includes("/view-preference")) return response({ node_positions: {}, collapsed_branch_ids: [], viewport_zoom: 1 });
+    if (path.includes("workspaces?")) return response({ items: [{ workspace_id: "workspace_1", name: "Target" }] });
+    if (path.includes("/home")) return response({
+      stats: { resume_count: 1, job_count: 1, active_operation_count: 0 },
+      recent_versions: [{ resume_id: "resume_1", version_id: "target_1", label: "目标版本" }],
+      workspace: { workspace_id: "workspace_1", name: "Target", revision: 1 },
+    });
+    if (path.includes("/applications?")) return response({ items: [] });
+    if (path.includes("/analytics/funnel")) return response({ definition_version: "v1", stages: [] });
+    if (path.includes("/reminders?")) return response({ items: [] });
+    if (path.includes("/content?")) return response({ markdown: "", profile: null });
+    return response({ items: [] });
+  };
+  const element = () => new Element(); const main = element(); const status = element(); const jobList = element(); const contextContent = element();
+  const shell = createWorkbenchShell({ getApiBase: () => "", elements: {
+    status, workspace: element(), jobCount: element(), jobList, agentContext: element(), operationCards: element(),
+    mode: element(), title: element(), main, match: element(), archiveTab: element(), matchTab: element(), view: element(), candidateRail: element(),
+    stageResume: element(), stageJob: element(), stageAnalysis: element(), stageEyebrow: element(), stageTitle: element(), stageDescription: element(),
+    stagePrimary: element(), stageSecondary: element(), agentActions: element(), taskCenter: element(), tailorResumeButton: element(),
+    contextTitle: element(), contextMeta: element(), contextDescription: element(), contextContent, actionBar: element(), actionStatus: element(),
+    resumeList: element(),
+  } });
+  return { shell, main, status, jobList, contextContent };
+}
+
+const findByText = (node, text) => node.tagName === "BUTTON" && node.textContent === text
+  ? node : node.children.map(child => findByText(child, text)).find(Boolean);
+const flush = async () => { for (let turn = 0; turn < 12; turn += 1) await Promise.resolve(); };
+async function selectTargetVersion(fixture) {
+  await fixture.shell.activate("version-map");
+  const target = fixture.main.querySelectorAll(".version-node").find(item => item.dataset.versionId === "target_1");
+  assert.ok(target, "the real Version Map rendered the target graph node");
+  target.emit("click", { shiftKey: false });
+  const merge = findByText(fixture.contextContent, "创建三方合并方案");
+  assert.ok(merge, "the real inspector rendered the merge proposal control");
+  return merge;
+}
+'''.replace("__MODULE_URL__", json.dumps(module_url))
+
+
+def test_real_shell_late_merge_proposal_cannot_overwrite_applications() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = _real_shell_merge_fixture(module_url) + r'''
+let resolveMerge;
+const fixture = createShellFixture(() => new Promise(resolve => { resolveMerge = payload => resolve(response(payload)); }));
+const merge = await selectTargetVersion(fixture);
+merge.emit("click");
+await flush();
+assert.equal(typeof resolveMerge, "function", "the real merge proposal POST is in flight");
+await fixture.shell.activate("applications");
+const applications = fixture.main.children[0];
+assert.equal(applications?.className, "applications-board", "Applications rendered while the old merge POST was pending");
+resolveMerge({ proposal_id: "proposal_1", status: "ready", revision: 1, decisions: [] });
+await flush();
+assert.equal(fixture.main.children[0], applications, "late merge proposal cannot replace Applications");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_application_filter_refresh_keeps_its_route_guard_and_refreshes_while_current() -> None:
     module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
     harness = f'''
