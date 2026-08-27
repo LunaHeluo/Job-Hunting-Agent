@@ -1,6 +1,7 @@
 from html.parser import HTMLParser
 import json
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -10,6 +11,63 @@ APP = (WEB / "app.js").read_text(encoding="utf-8")
 STATE = (WEB / "app/shell-state.js").read_text(encoding="utf-8")
 MODALS = (WEB / "app/modal-manager.js").read_text(encoding="utf-8")
 CSS = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "styles").glob("*.css"))
+
+
+def _css_rules(css: str, media: str = "") -> list[tuple[str, str, str]]:
+    rules: list[tuple[str, str, str]] = []
+    cursor = 0
+    while cursor < len(css):
+        opening = css.find("{", cursor)
+        if opening < 0:
+            break
+        header = css[cursor:opening].strip()
+        depth = 1
+        closing = opening + 1
+        while depth and closing < len(css):
+            depth += (css[closing] == "{") - (css[closing] == "}")
+            closing += 1
+        body = css[opening + 1:closing - 1]
+        if header.startswith("@media"):
+            rules.extend(_css_rules(body, f"{media} {header}"))
+        elif header and not header.startswith("@"):
+            rules.append((header, body, media))
+        cursor = closing
+    return rules
+
+
+def _media_matches(media: str, width: int) -> bool:
+    for kind, value in re.findall(r"\((min|max)-width:\s*(\d+)px\)", media):
+        if kind == "min" and width < int(value):
+            return False
+        if kind == "max" and width > int(value):
+            return False
+    return True
+
+
+def _specificity(selector: str) -> tuple[int, int, int]:
+    return (selector.count("#"), len(re.findall(r"[.\[:][\w-]+", selector)), 0)
+
+
+def _effective_declaration(target: str, property_name: str, width: int) -> str | None:
+    imports = re.findall(r'@import url\("\./([^"?]+)', (WEB / "styles/app.css").read_text(encoding="utf-8"))
+    winner: tuple[tuple[int, int, int], int, str] | None = None
+    order = 0
+    for imported in imports:
+        stylesheet = (WEB / "styles" / imported).read_text(encoding="utf-8")
+        for selectors, declarations, media in _css_rules(stylesheet):
+            if not _media_matches(media, width):
+                continue
+            for selector in selectors.split(","):
+                if target not in selector:
+                    continue
+                match = re.search(rf"(?<![-\w]){re.escape(property_name)}\s*:\s*([^;}}]+)", declarations)
+                if not match:
+                    continue
+                candidate = (_specificity(selector), order, match.group(1).strip())
+                if winner is None or candidate[:2] >= winner[:2]:
+                    winner = candidate
+                order += 1
+    return winner[2] if winner else None
 
 
 class IdTreeParser(HTMLParser):
@@ -256,3 +314,22 @@ def test_s1_tokens_are_shared_by_shell_and_workbench() -> None:
     ):
         assert token in CSS
     assert "--wb-bg: var(--app-bg)" in CSS
+
+
+def test_css_cascade_keeps_desktop_tracks_bounded_and_columns_equal_at_1280() -> None:
+    assert _effective_declaration(".workbench-layout", "grid-template-columns", 1280) == (
+        "clamp(270px, 18vw, 330px) minmax(620px, 1fr) clamp(260px, 18vw, 340px)"
+    )
+    assert _effective_declaration(".workbench-layout", "height", 1280) == "var(--app-workspace-block-size)"
+    for column in (".workbench-left", ".workbench-main", ".workbench-right"):
+        assert _effective_declaration(column, "height", 1280) == "100%"
+
+
+def test_css_cascade_uses_safe_flow_and_vertical_agent_layout_below_1280() -> None:
+    assert _effective_declaration(".workbench-layout", "grid-template-columns", 1024) == "1fr"
+    assert _effective_declaration(".workbench-left", "grid-template-rows", 1280) == "auto minmax(0, 1fr)"
+    assert _effective_declaration(".workbench-chat-dock", "flex-direction", 1280) == "column"
+
+
+def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
+    assert _effective_declaration("#workbenchMatchContent", "min-height", 1280) == "0"

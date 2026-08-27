@@ -37,7 +37,6 @@ def test_workbench_visual_tokens_focus_and_breakpoints_are_explicit() -> None:
         "--wb-bg: var(--app-bg)",
         "--wb-accent: var(--app-accent)",
         ":focus-visible",
-        "grid-template-columns: 360px minmax(640px,1fr) 300px",
         "@media (max-width: 1439px)",
         "@media (max-width: 1279px)",
         "@media (max-width: 1023px)",
