@@ -272,6 +272,21 @@ def test_markup_has_one_persistent_shell_and_one_agent_mount() -> None:
     assert HTML.index('id="chatDock"') > HTML.index('id="workbenchChatDock"')
 
 
+def test_legacy_shell_and_conflicting_height_rules_are_absent() -> None:
+    assert 'id="chatView"' not in HTML
+    assert 'class="sidebar"' not in HTML
+    assert ".append(chatDock)" not in APP
+    assert 'showPrimaryView("chat")' not in APP
+    assert "body.workbench-active { overflow-y: auto; }" not in CSS
+    assert ".workbench-agent-card { height: min(760px" not in CSS
+
+
+def test_desktop_acceptance_sizes_are_documented() -> None:
+    qa = Path("docs/superpowers/qa/2026-08-26-unified-desktop-workbench.md").read_text(encoding="utf-8")
+    for viewport in ("1280x800", "1440x900", "1920x1080"):
+        assert viewport in qa
+
+
 def test_advanced_modules_live_inside_k1_dialog() -> None:
     tree = parse_html_tree()
     for view_id in ("knowledgeView", "capabilitiesView", "trustView"):

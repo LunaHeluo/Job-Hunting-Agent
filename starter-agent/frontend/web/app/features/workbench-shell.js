@@ -208,7 +208,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.stagePrimary.disabled = stats.active_operation_count > 0 && stage === "C";
     elements.stageSecondary.hidden = !config.secondary;
     elements.stageSecondary.textContent = config.secondary || "";
-    elements.candidateRail.hidden = stage === "A";
+    elements.candidateRail.hidden = false;
     elements.matchTab.disabled = stage === "A";
     elements.matchTab.title = stage === "A" ? "先上传简历建档" : "";
     replaceAgentActions(stage);
