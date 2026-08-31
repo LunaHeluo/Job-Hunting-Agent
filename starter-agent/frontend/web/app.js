@@ -350,11 +350,15 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     function captureCapabilityRequest() {
-      return currentCapabilityRequestState();
+      return {
+        ...currentCapabilityRequestState(),
+        overlayToken: shellState.captureOverlayRequest()
+      };
     }
 
     function isCapabilityRequestCurrent(token) {
-      return CapabilityUiLogic.isRequestCurrent(
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && CapabilityUiLogic.isRequestCurrent(
         token,
         currentCapabilityRequestState()
       );
@@ -2395,12 +2399,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       return {
         epoch: trustState.requestEpoch,
         route: trustState.route,
-        apiBase: apiBase()
+        apiBase: apiBase(),
+        overlayToken: shellState.captureOverlayRequest()
       };
     }
 
     function isTrustRequestCurrent(token) {
-      return token.epoch === trustState.requestEpoch
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && token.epoch === trustState.requestEpoch
         && token.route === trustState.route
         && token.apiBase === apiBase();
     }
@@ -2631,7 +2637,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function loadTrustEvals() {
+    async function loadTrustEvals(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureTrustRequest();
       const trustRead = captureTrustRead("evals", "fixture");
       if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "fixture")) return;
@@ -2713,7 +2720,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       setTrustStatus(`已加载 ${trustState.traces.length} 条 Trace 事件`);
     }
 
-    async function loadTrustTraces() {
+    async function loadTrustTraces(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const params = new URLSearchParams();
       const filters = [
         ["eval_run_id", trustTraceRunFilter.value],
@@ -2772,7 +2780,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       setTrustStatus(`Safety Gate: ${safety.gate_status || "unknown"}`);
     }
 
-    async function loadTrustSafety() {
+    async function loadTrustSafety(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureTrustRequest();
       const trustRead = captureTrustRead("safety", "safety");
       if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "safety")) return;
@@ -2792,13 +2801,15 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function refreshTrustRoute() {
+      const overlayToken = shellState.captureOverlayRequest();
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       updateTrustTabs();
       if (trustState.route === "traces") {
-        await loadTrustTraces();
+        await loadTrustTraces(overlayToken);
       } else if (trustState.route === "safety") {
-        await loadTrustSafety();
+        await loadTrustSafety(overlayToken);
       } else {
-        await loadTrustEvals();
+        await loadTrustEvals(overlayToken);
       }
     }
 
@@ -3355,7 +3366,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       renderCapabilityRawDefinition(capabilityDetail, skill.name);
     }
 
-    async function loadCapabilityServers() {
+    async function loadCapabilityServers(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureCapabilityRequest();
       const requestApplies = capabilityState.route === "mcp-servers";
       if (!capabilityState.servers.length) {
@@ -3502,7 +3514,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function loadCapabilitySkills() {
+    async function loadCapabilitySkills(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureCapabilityRequest();
       const requestApplies = capabilityState.route === "skills";
       if (!capabilityState.skills.length) {
@@ -4047,15 +4060,19 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function refreshCapabilityRoute() {
+      const overlayToken = shellState.captureOverlayRequest();
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       capabilityRefreshButton.disabled = true;
       try {
         if (capabilityState.route === "skills") {
-          await loadCapabilitySkills();
+          await loadCapabilitySkills(overlayToken);
         } else {
-          await loadCapabilityServers();
+          await loadCapabilityServers(overlayToken);
         }
       } finally {
-        capabilityRefreshButton.disabled = false;
+        if (shellState.isOverlayRequestCurrent(overlayToken)) {
+          capabilityRefreshButton.disabled = false;
+        }
       }
     }
 
@@ -4153,18 +4170,22 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       return detail?.detail?.message || detail?.message || fallback;
     }
 
-    async function loadKnowledgeBase() {
+    async function loadKnowledgeBase(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       setKnowledgeStatus("正在加载知识库...");
       knowledgeDocumentList.replaceChildren();
       try {
         const basesResponse = await fetch(`${apiBase()}/v1/knowledge-bases`);
+        if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
         if (!basesResponse.ok) throw new Error(await knowledgeError(basesResponse, "知识库加载失败"));
         const bases = await basesResponse.json();
         activeKnowledgeBaseId = bases.knowledge_bases[0]?.id || null;
         if (!activeKnowledgeBaseId) throw new Error("没有可用知识库");
         const response = await fetch(`${apiBase()}/v1/knowledge-bases/${activeKnowledgeBaseId}/documents`);
+        if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
         if (!response.ok) throw new Error(await knowledgeError(response, "文档列表加载失败"));
         const payload = await response.json();
+        if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
         knowledgeDocuments = payload.documents;
         const existingDocumentIds = new Set(knowledgeDocuments.map(item => item.id));
         selectedKnowledgeDocumentIds = new Set(
@@ -4180,7 +4201,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderKnowledgeDocuments(knowledgeDocuments);
         setKnowledgeStatus(`已加载 ${knowledgeDocuments.length} 份文档`);
       } catch (error) {
-        setKnowledgeStatus(error.message || "知识库加载失败", true);
+        if (shellState.isOverlayRequestCurrent(overlayToken)) {
+          setKnowledgeStatus(error.message || "知识库加载失败", true);
+        }
       }
     }
 

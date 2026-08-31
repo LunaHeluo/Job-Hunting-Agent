@@ -22,6 +22,46 @@ body {
   min-height: 100dvh;
 }
 
+.advanced-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(27 37 31 / 38%);
+  backdrop-filter: blur(2px);
+}
+
+.advanced-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(88vw, 1600px);
+  height: min(88dvh, 960px);
+  overflow: hidden;
+  border: 1px solid var(--app-line);
+  border-radius: 18px;
+  background: var(--app-surface);
+  box-shadow: 0 28px 80px rgb(38 60 49 / 24%);
+}
+
+.advanced-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--app-line);
+}
+
+.advanced-dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
 @media (min-width: 1280px) {
   .workbench-view {
     display: grid;

@@ -77,14 +77,14 @@
       font-weight: 650;
     }
 
-    .knowledge-view {
+    .advanced-dialog-body .knowledge-view {
       min-width: 0;
       height: 100%;
       overflow: hidden;
       padding: 24px;
     }
 
-    .knowledge-layout {
+    .advanced-dialog-body .knowledge-layout {
       display: grid;
       grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
       gap: 18px;
@@ -281,7 +281,7 @@
         min-height: 0;
       }
 
-      .knowledge-view {
+      .advanced-dialog-body .knowledge-view {
         overflow: auto;
       }
     }
@@ -296,13 +296,13 @@
         height: auto;
       }
 
-      .knowledge-document-pane,
-      .knowledge-chunk-pane {
+      .advanced-dialog-body .knowledge-document-pane,
+      .advanced-dialog-body .knowledge-chunk-pane {
         height: min(46vh, 440px);
       }
     }
 
-    .capability-view {
+    .advanced-dialog-body .capability-view {
       min-width: 0;
       height: 100vh;
       overflow: auto;
@@ -310,7 +310,7 @@
       background: var(--bg);
     }
 
-    .capability-shell {
+    .advanced-dialog-body .capability-shell {
       max-width: 1240px;
       margin: 0 auto;
     }
@@ -383,7 +383,7 @@
       background: #fffaf0;
     }
 
-    .capability-layout {
+    .advanced-dialog-body .capability-layout {
       display: grid;
       grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.7fr);
       gap: 14px;
@@ -403,7 +403,7 @@
       gap: 8px;
     }
 
-    .capability-tools-list {
+    .advanced-dialog-body .capability-tools-list {
       display: grid;
       gap: 8px;
       max-height: min(52vh, 560px);
@@ -1315,16 +1315,16 @@
         grid-template-columns: 1fr;
       }
 
-      .capability-view {
+      .advanced-dialog-body .capability-view {
         height: 100%;
         padding: 12px;
       }
 
-      .capability-layout {
+      .advanced-dialog-body .capability-layout {
         grid-template-columns: 1fr;
       }
 
-      .capability-tools-list {
+      .advanced-dialog-body .capability-tools-list {
         max-height: 420px;
       }
 
