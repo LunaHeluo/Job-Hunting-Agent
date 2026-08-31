@@ -84,7 +84,7 @@ def test_capability_layout_is_keyboard_and_narrow_screen_accessible() -> None:
 def test_server_tools_use_a_bounded_responsive_scroll_region() -> None:
     for contract in (
         ".capability-tools-list {",
-        "max-height: min(52vh, 560px);",
+        "max-height: 560px;",
         "overflow-y: auto;",
         "overscroll-behavior: contain;",
         "scrollbar-gutter: stable;",

@@ -70,7 +70,7 @@ def test_all_trust_read_loaders_bind_epoch_route_and_abort_ownership() -> None:
     ):
         start = HTML.index(f"async function {loader}")
         body = HTML[start : HTML.index("\n    }", start) + 6]
-        assert "const request = captureTrustRequest();" in body
+        assert "const request = captureTrustRequest(overlayToken);" in body
         assert "const trustRead = captureTrustRead(" in body
         assert "signal: trustState.requestController.signal" in body
         assert "isTrustReadCurrent(trustRead" in body

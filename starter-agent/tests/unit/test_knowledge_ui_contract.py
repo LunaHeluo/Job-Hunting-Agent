@@ -91,12 +91,13 @@ def test_knowledge_documents_and_chunks_use_scrollable_master_detail_layout() ->
         'row.classList.toggle("is-selected"',
         'row.setAttribute("aria-current"',
         "overflow-y: auto",
-        "height: clamp(480px, calc(100vh - 170px), 820px)",
+        ".advanced-dialog-body .knowledge-layout",
+        "height: 100%;",
         "grid-template-rows: auto minmax(0, 1fr)",
         "grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr)",
         "@media (max-width: 1100px)",
         "@media (max-width: 700px)",
-        "height: min(46vh, 440px)",
+        "height: 440px",
     ):
         assert contract in HTML
     assert "grid-template-columns: 1fr" in HTML

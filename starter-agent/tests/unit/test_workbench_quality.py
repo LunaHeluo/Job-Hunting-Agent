@@ -48,6 +48,15 @@ def test_k1_window_keeps_advanced_results_owned_by_the_open_overlay() -> None:
     ):
         assert f"async function {loader}(overlayToken = shellState.captureOverlayRequest())" in APP
     assert "shellState.isOverlayRequestCurrent(overlayToken)" in APP
+    assert "height: clamp(480px, calc(100vh - 170px), 820px)" not in CSS
+    assert ".advanced-dialog-body .capability-view {\n      min-width: 0;\n      height: 100vh" not in CSS
+    for action in (
+        "loadKnowledgeChunks(item, overlayToken = shellState.captureOverlayRequest())",
+        "startTrustEvalRun(overlayToken = shellState.captureOverlayRequest())",
+        "loadCapabilityConfirmations(overlayToken = shellState.captureOverlayRequest())",
+        "refreshCapabilityAuthorityForConfirmation(confirmation, overlayToken = shellState.captureOverlayRequest())",
+    ):
+        assert f"async function {action}" in APP
 
 
 def test_dialog_keyboard_and_motion_accessibility_contracts() -> None:
