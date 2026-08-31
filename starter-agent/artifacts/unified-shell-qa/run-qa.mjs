@@ -62,6 +62,28 @@ async function pressKey(key, { shift = false } = {}) {
   await delay(100);
 }
 
+async function clickSelector(selector) {
+  const point = await evaluate(`(() => {
+    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
+  await delay(75);
+}
+
+async function replaceText(selector, value) {
+  await clickSelector(selector);
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", modifiers: 2, windowsVirtualKeyCode: 65 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2, windowsVirtualKeyCode: 65 });
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  if (value) await send("Input.insertText", { text: value });
+  await delay(75);
+  return evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
+}
+
 await send("Page.enable");
 await send("Runtime.enable");
 await send("Network.enable");
@@ -87,6 +109,9 @@ for (const viewport of viewports) {
     screenHeight: viewport.height,
   });
   await delay(350);
+  const typedValue = viewport.width <= 1440
+    ? await replaceText("#messageInput", `Edge ${viewport.width} composer input`)
+    : "";
   const measured = await evaluate(`(() => {
     const rect = selector => {
       const value = document.querySelector(selector).getBoundingClientRect();
@@ -95,6 +120,19 @@ for (const viewport of viewports) {
     const left = rect(".workbench-left");
     const canvas = rect(".workbench-canvas");
     const context = rect(".workbench-context-card");
+    const interactive = selector => {
+      const element = document.querySelector(selector);
+      const value = element.getBoundingClientRect();
+      const centerX = value.left + value.width / 2;
+      const centerY = value.top + value.height / 2;
+      const hit = document.elementFromPoint(centerX, centerY);
+      return {
+        top: Math.round(value.top), bottom: Math.round(value.bottom), height: Math.round(value.height),
+        width: Math.round(value.width), withinViewport: value.top >= 0 && value.bottom <= innerHeight,
+        visible: value.width > 0 && value.height > 0 && getComputedStyle(element).visibility !== "hidden",
+        hitTarget: hit === element || element.contains(hit),
+      };
+    };
     return {
       viewport: "${viewport.width}x${viewport.height}", left, canvas, context,
       maxTopDelta: Math.max(left.top, canvas.top, context.top) - Math.min(left.top, canvas.top, context.top),
@@ -103,9 +141,14 @@ for (const viewport of viewports) {
       documentScrollWidth: document.documentElement.scrollWidth,
       bodyScrollWidth: document.body.scrollWidth,
       horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > document.documentElement.clientWidth,
+      composer: interactive("#composer"),
+      input: interactive("#messageInput"),
+      send: interactive("#sendButton"),
+      typedValue: ${JSON.stringify(typedValue)},
     };
   })()`);
   geometry.push(measured);
+  if (viewport.width <= 1440) await replaceText("#messageInput", "");
   const screenshot = await send("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
@@ -151,13 +194,12 @@ await send("Emulation.setDeviceMetricsOverride", {
 });
 await delay(200);
 
+const typedDraft = await replaceText("#messageInput", "Task 7 draft stays with the Agent");
+
 const initialState = await evaluate(`(() => {
-  const input = document.querySelector("#messageInput");
   const messages = document.querySelector("#messages");
   const center = document.querySelector(".workspace-scroll-region");
   const context = document.querySelector("#workbenchContextContent");
-  input.value = "Task 7 draft stays with the Agent";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
   messages.style.paddingBottom = "900px";
   center.style.paddingBottom = "1000px";
   context.style.paddingBottom = "1000px";
@@ -165,7 +207,8 @@ const initialState = await evaluate(`(() => {
   center.scrollTop = 88;
   context.scrollTop = 64;
   return {
-    input: input.value,
+    input: document.querySelector("#messageInput").value,
+    typedDraft: ${JSON.stringify(typedDraft)},
     agentScroll: messages.scrollTop,
     centerScroll: center.scrollTop,
     contextScroll: context.scrollTop,
@@ -176,12 +219,14 @@ const initialState = await evaluate(`(() => {
 
 await evaluate('document.querySelector("#versionMapPageTab").click()');
 await waitFor('location.hash === "#/version-map" && document.querySelector("#versionMapPageTab").getAttribute("aria-current") === "page"');
+const versionEmptyContext = await evaluate('document.querySelector("#workbenchContextTitle").textContent');
 await evaluate(`(() => {
   document.querySelector(".workspace-scroll-region").scrollTop = 144;
   document.querySelector("#workbenchContextContent").scrollTop = 96;
 })()`);
 await evaluate('document.querySelector("#applicationsPageTab").click()');
 await waitFor('location.hash === "#/applications" && document.querySelector("#applicationsPageTab").getAttribute("aria-current") === "page"');
+const applicationEmptyContext = await evaluate('document.querySelector("#workbenchContextTitle").textContent');
 await evaluate(`(() => {
   document.querySelector(".workspace-scroll-region").scrollTop = 176;
   document.querySelector("#workbenchContextContent").scrollTop = 112;
@@ -291,11 +336,30 @@ const result = {
     centerScrollRestored: restoredState.centerScroll === initialState.centerScroll,
     contextScrollRestored: restoredState.contextScroll === initialState.contextScroll,
     selectionContextStable: restoredState.selectionContext === initialState.selectionContext,
+    routeEmptyContexts: { versionMap: versionEmptyContext, applications: applicationEmptyContext },
     k1Results,
     focusTrap: { outsideRecovery: trapOutside, wrapFromFirst: trapWrap },
     isolatedError,
   },
 };
+
+for (const item of geometry) {
+  if (item.maxTopDelta > 1 || item.maxBottomDelta > 1) throw new Error(`${item.viewport}: desktop columns are not aligned`);
+  if (item.horizontalOverflow) throw new Error(`${item.viewport}: horizontal overflow detected`);
+  if (item.viewport !== "1920x1080") {
+    for (const [name, control] of Object.entries({ composer: item.composer, input: item.input, send: item.send })) {
+      if (!control.visible || !control.withinViewport || !control.hitTarget) throw new Error(`${item.viewport}: ${name} is not visibly operable`);
+    }
+    if (item.typedValue !== `Edge ${item.viewport.split("x")[0]} composer input`) throw new Error(`${item.viewport}: real input did not reach the Agent composer`);
+  }
+}
+if (!safeFlow.sequentialTopOrder || safeFlow.horizontalOverflow) throw new Error("1024x768 safe flow failed");
+if (!result.interaction.agentInputPreserved || !result.interaction.agentScrollPreserved) throw new Error("Agent state did not survive primary navigation");
+if (!result.interaction.centerScrollRestored || !result.interaction.contextScrollRestored) throw new Error("route scroll state was not restored");
+if (versionEmptyContext !== "版本详情" || applicationEmptyContext !== "投递详情") throw new Error("route-specific empty context was not rendered");
+if (!k1Results.every(item => item.settingsFocus && item.opened.panelVisible && item.opened.primaryHashUnchanged && item.closed.overlayHidden && item.closed.focusReturned)) throw new Error("K1 open/close acceptance failed");
+if (!trapOutside.activeInside || !trapOutside.focusVisible || !trapWrap.activeInside || !trapWrap.didWrap) throw new Error("K1 keyboard trap failed");
+if (!isolatedError.errorInsideK1 || !isolatedError.k1Visible || !isolatedError.legacyShellAbsent) throw new Error("K1 error isolation failed");
 
 await fs.writeFile(path.join(outputDir, "browser-acceptance.json"), `${JSON.stringify(result, null, 2)}\n`, "utf8");
 console.log(JSON.stringify(result, null, 2));

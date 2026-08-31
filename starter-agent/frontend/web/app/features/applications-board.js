@@ -16,6 +16,7 @@ function token(prefix) { return `${prefix}_${crypto.randomUUID().replaceAll("-",
 export function createApplicationsBoard({ request, elements, onApplicationSelect = () => {} }) {
   let workspaceId = "";
   let activeCard = null;
+  let selectedApplicationId = null;
   let lifecycleIsCurrent = () => true;
 
   async function render(nextWorkspaceId, query = "", status = "", options = {}) {
@@ -39,6 +40,7 @@ export function createApplicationsBoard({ request, elements, onApplicationSelect
   }
 
   function renderBoard(items, query, status, funnel, reminders) {
+    activeCard = null;
     const shell = document.createElement("section"); shell.className = "applications-board";
     const toolbar = document.createElement("div"); toolbar.className = "applications-toolbar";
     const search = document.createElement("input"); search.type = "search"; search.placeholder = "搜索公司、岗位或下一步"; search.value = query; search.setAttribute("aria-label", "搜索投递记录");
@@ -62,16 +64,32 @@ export function createApplicationsBoard({ request, elements, onApplicationSelect
       columns.append(column);
     }
     shell.append(columns); elements.main.replaceChildren(shell);
+    const restored = items.find(item => item.application.application_id === selectedApplicationId)?.application;
+    if (restored) onApplicationSelect(restored);
+    else if (selectedApplicationId) {
+      selectedApplicationId = null;
+      onApplicationSelect(null);
+    }
   }
 
   function renderCard(value) {
     const application = value.application; const job = value.job_snapshot;
     const card = document.createElement("article"); card.className = "application-card";
     card.tabIndex = 0;
-    const selectApplication = () => {
-      activeCard?.classList.remove("is-active");
+    if (application.application_id === selectedApplicationId) {
       activeCard = card;
       card.classList.add("is-active");
+      card.setAttribute("aria-current", "true");
+    } else {
+      card.setAttribute("aria-current", "false");
+    }
+    const selectApplication = () => {
+      activeCard?.classList.remove("is-active");
+      activeCard?.setAttribute("aria-current", "false");
+      selectedApplicationId = application.application_id;
+      activeCard = card;
+      card.classList.add("is-active");
+      card.setAttribute("aria-current", "true");
       onApplicationSelect(application);
     };
     card.addEventListener("click", selectApplication);

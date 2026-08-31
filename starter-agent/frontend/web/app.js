@@ -5,7 +5,7 @@ import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/fe
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
-import { createTrustReadOwnership } from "./app/trust-request-state.js";
+import { createTrustReadOwnership, createTrustRunControlState } from "./app/trust-request-state.js";
 window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, createStore });
 
     /* capability-ui-logic:start */
@@ -176,6 +176,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       requestController: new AbortController()
     };
     const trustReadOwnership = createTrustReadOwnership();
+    const trustRunControl = createTrustRunControlState();
 
     const apiBaseInput = document.querySelector("#apiBase");
     const providerSelect = document.querySelector("#providerSelect");
@@ -195,7 +196,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const clearAllSessionsButton = document.querySelector("#clearAllSessionsButton");
     const composer = document.querySelector("#composer");
     const toolMenu = document.querySelector("#toolMenu");
-    const settingsButton = document.querySelector("#settingsButton");
     const workbenchSettingsButton = document.querySelector("#workbenchSettingsButton");
     const settingsOverlay = document.querySelector("#settingsOverlay");
     const settingsCloseButton = document.querySelector("#settingsCloseButton");
@@ -412,9 +412,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       statusEl.textContent = text;
     }
 
-    let settingsReturnFocus = settingsButton;
+    let settingsReturnFocus = workbenchSettingsButton;
 
-    async function openSettings(trigger = settingsButton) {
+    async function openSettings(trigger = workbenchSettingsButton) {
       settingsReturnFocus = trigger;
       toolGovernanceToggle.checked = state.toolGovernanceEnabled;
       settingsOverlay.hidden = false;
@@ -1995,7 +1995,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         - sessionListEl.clientHeight;
       if (remaining < 120) loadSessions(false);
     });
-    settingsButton.addEventListener("click", () => openSettings(settingsButton));
     workbenchSettingsButton.addEventListener("click", () => openSettings(workbenchSettingsButton));
     settingsCloseButton.addEventListener("click", closeSettings);
     settingsOverlay.addEventListener("click", (event) => {
@@ -2503,12 +2502,19 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       trustSafetyPanel.hidden = route !== "safety";
     }
 
+    function syncTrustRunButton() {
+      if (advancedWindow.activeType() === "trust" && trustState.route === "evals") {
+        trustStartRunButton.disabled = trustRunControl.pending();
+      }
+    }
+
     function setTrustRoute(route) {
       if (!['evals', 'traces', 'safety'].includes(route)) return;
       const routeChanged = trustState.route !== route;
       if (routeChanged) advanceTrustRequestEpoch();
       trustState.route = route;
       updateTrustTabs();
+      syncTrustRunButton();
       if (advancedWindow.activeType() === "trust") void refreshTrustRoute();
     }
 
@@ -2688,7 +2694,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderTrustError(new Error("没有可运行的 Suite；请先通过后端写入 Eval Suite。"));
         return;
       }
-      trustStartRunButton.disabled = true;
+      trustRunControl.begin();
+      syncTrustRunButton();
       clearTrustError();
       setTrustStatus("正在创建真实后端 Eval Run...");
       const runId = `ui-fixture-${Date.now()}`;
@@ -2717,7 +2724,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       } catch (error) {
         if (isTrustRequestCurrent(request)) renderTrustError(error);
       } finally {
-        if (isTrustRequestCurrent(request)) trustStartRunButton.disabled = false;
+        trustRunControl.settle();
+        syncTrustRunButton();
       }
     }
 
@@ -2827,6 +2835,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       const overlayToken = shellState.captureOverlayRequest();
       if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       updateTrustTabs();
+      syncTrustRunButton();
       if (trustState.route === "traces") {
         await loadTrustTraces(overlayToken);
       } else if (trustState.route === "safety") {

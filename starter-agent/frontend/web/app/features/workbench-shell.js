@@ -54,10 +54,24 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   }
 
   function renderVersionContext(node, { inspectorMount = elements.jobList } = {}) {
+    if (!node) {
+      const empty = document.createElement("section");
+      empty.className = "context-detail-card";
+      empty.textContent = "选择版本节点后显示版本详情与可用操作。";
+      renderContext({ title: "版本详情", description: "当前版本地图尚未选择节点", content: empty });
+      return;
+    }
     renderContext({ title: "版本详情", meta: `r${node.revision}`, description: "当前选中的简历版本", content: inspectorMount });
   }
 
   function renderApplicationContext(application) {
+    if (!application) {
+      const empty = document.createElement("section");
+      empty.className = "context-detail-card";
+      empty.textContent = "选择投递卡片后显示状态、下一步与相关操作。";
+      renderContext({ title: "投递详情", description: "当前投递看板尚未选择记录", content: empty });
+      return;
+    }
     const panel = document.createElement("section");
     panel.className = "context-detail-card";
     const heading = document.createElement("strong");
@@ -263,6 +277,8 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       ? `已确认岗位 ${stats.job_count} 个；候选来源需逐项确认。`
       : "暂无已确认岗位。";
     if (route === "workbench") renderWorkbenchContext();
+    else if (route === "version-map") renderVersionContext(null);
+    else if (route === "applications") renderApplicationContext(null);
     elements.agentContext.textContent = stats.resume_count
       ? `当前上下文：${home.workspace?.name || "求职目标"}；Agent 不会自动提交修改。`
       : "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。";

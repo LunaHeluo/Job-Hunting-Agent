@@ -45,7 +45,6 @@
             </div>
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传新档案</button></div>
             <div class="sidebar-header-actions">
-              <button id="settingsButton" class="sidebar-settings-button" type="button" title="设置"><span aria-hidden="true">⚙</span><span>设置</span></button>
               <button id="newSessionButton" type="button" title="新建会话">新建</button>
               <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
             </div>
@@ -62,12 +61,6 @@
             <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话">
               <div id="status" class="status">准备连接本地 API</div>
               <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
-              <div class="settings">
-                <div class="field"><label for="apiBase">API</label><input id="apiBase" value="http://127.0.0.1:8000"></div>
-                <div class="field"><label for="providerSelect">Provider</label><select id="providerSelect"><option value="">使用后端默认</option></select></div>
-                <div class="field"><label for="modelSelect">Model</label><select id="modelSelect"><option value="">使用后端默认</option></select></div>
-                <div class="field"><label for="chatKnowledgeMode">知识库问答</label><select id="chatKnowledgeMode"><option value="auto" selected>自动</option><option value="off">关闭</option></select></div>
-              </div>
               <div id="chatDock">
                 <div id="messages" class="messages" aria-live="polite"></div>
                 <div id="chatConfirmationCards" class="chat-confirmation-cards" aria-live="polite"></div>
@@ -362,6 +355,13 @@
         <button id="settingsCloseButton" class="settings-close" type="button" aria-label="关闭设置">×</button>
       </div>
       <div class="settings-dialog-body">
+        <section class="settings connection-settings" aria-labelledby="connectionSettingsTitle">
+          <h3 id="connectionSettingsTitle">Agent 连接</h3>
+          <div class="field"><label for="apiBase">API</label><input id="apiBase" value="http://127.0.0.1:8000"></div>
+          <div class="field"><label for="providerSelect">Provider</label><select id="providerSelect"><option value="">使用后端默认</option></select></div>
+          <div class="field"><label for="modelSelect">Model</label><select id="modelSelect"><option value="">使用后端默认</option></select></div>
+          <div class="field"><label for="chatKnowledgeMode">知识库问答</label><select id="chatKnowledgeMode"><option value="auto" selected>自动</option><option value="off">关闭</option></select></div>
+        </section>
         <nav class="advanced-settings-nav" aria-label="高级功能">
           <h3>高级功能</h3>
           <p class="setting-description">这些功能保留原有路由和后端策略，但不占用日常简历工作台的主导航。</p>

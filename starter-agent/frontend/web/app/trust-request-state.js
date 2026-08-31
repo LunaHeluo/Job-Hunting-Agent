@@ -29,3 +29,12 @@ export function createTrustReadOwnership() {
 
   return Object.freeze({ capture, isCurrent });
 }
+
+export function createTrustRunControlState() {
+  let runPending = false;
+  return Object.freeze({
+    begin() { runPending = true; },
+    settle() { runPending = false; },
+    pending: () => runPending,
+  });
+}

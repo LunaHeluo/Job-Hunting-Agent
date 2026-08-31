@@ -426,11 +426,13 @@ assert.equal(selected, null, "a descendant key event does not select the card");
     assert result.returncode == 0, result.stderr
 
 
-def test_real_version_node_selection_keeps_the_inspector_in_the_context_rail() -> None:
+def test_version_and_application_selection_round_trip_with_their_context() -> None:
     module_url = (WEB / "app/features/resume-workspace.js").resolve().as_uri()
+    application_module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
     harness = f'''
 import assert from "node:assert/strict";
 import {{ createResumeWorkspace }} from {json.dumps(module_url)};
+import {{ createApplicationsBoard }} from {json.dumps(application_module_url)};
 
 class Element {{
   constructor(tagName = "div") {{
@@ -447,13 +449,14 @@ class Element {{
     if (item.parentElement) item.parentElement.children = item.parentElement.children.filter(child => child !== item);
     item.parentElement = this; this.children.push(item);
   }} }}
+  add(item) {{ this.append(item); }}
   replaceChildren(...items) {{ for (const child of this.children) child.parentElement = null; this.children = []; this.append(...items); }}
   addEventListener(type, listener) {{ this.listeners.set(type, listener); }}
   emit(type, event = {{}}) {{ this.listeners.get(type)?.({{ currentTarget: this, target: this, ...event }}); }}
   setAttribute(name, value) {{ this[name] = value; }}
   querySelectorAll(selector) {{
     const all = this.children.flatMap(child => [child, ...child.querySelectorAll(selector)]);
-    if (selector === ".version-node") return all.filter(item => item.className.split(/\\s+/).includes("version-node"));
+    if (selector.startsWith(".")) return all.filter(item => item.className.split(/\\s+/).includes(selector.slice(1)));
     if (selector === '[role="treeitem"]') return all.filter(item => item.role === "treeitem");
     return [];
   }}
@@ -494,6 +497,34 @@ versionRouteCurrent = false;
 main.replaceChildren(newerRoute);
 await workspace.renderVersionMap("workspace_1", "resume_1");
 assert.equal(main.children[0], newerRoute, "a Version Map user reload retains its original route guard");
+versionRouteCurrent = true;
+contextContent.replaceChildren(new Element());
+await workspace.renderVersionMap("workspace_1", "resume_1", {{ isCurrent: () => versionRouteCurrent }});
+const restoredVersion = main.querySelectorAll(".version-node")[0];
+assert.equal(restoredVersion["aria-current"], "true", "the selected version is active after returning to Version Map");
+assert.ok(findControl(contextContent), "the selected version inspector is rebuilt after returning");
+
+const application = {{
+  application_id: "app_1", current_status: "applied", priority: 50,
+  resume_version_id: "version_1", next_action: "等待通知", remind_at: null,
+  events: [], revision: 3,
+}};
+const applicationMain = new Element();
+const selectedApplications = [];
+const board = createApplicationsBoard({{
+  elements: {{ main: applicationMain }},
+  onApplicationSelect: item => selectedApplications.push(item?.application_id || null),
+  request: async path => path.includes("applications?")
+    ? {{ items: [{{ application, job_snapshot: {{ company: "OpenAI", title: "Engineer" }} }}] }}
+    : path.includes("funnel") ? {{ definition_version: "v1", stages: [] }} : {{ items: [] }},
+}});
+await board.render("workspace_1");
+applicationMain.querySelectorAll(".application-card")[0].emit("click");
+applicationMain.replaceChildren(new Element());
+await board.render("workspace_1");
+const restoredApplication = applicationMain.querySelectorAll(".application-card")[0];
+assert.ok(restoredApplication.className.split(/\\s+/).includes("is-active"), "the selected application is active after returning");
+assert.deepEqual(selectedApplications, ["app_1", "app_1"], "the application context is rebuilt after returning");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],

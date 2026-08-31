@@ -80,9 +80,9 @@ def test_trust_read_ownership_rejects_same_route_stale_generations_and_selection
     module_url = TRUST_REQUESTS.resolve().as_uri()
     harness = f'''
 import assert from "node:assert/strict";
-import {{ createTrustReadOwnership }} from {json.dumps(module_url)};
+import * as trustRequests from {json.dumps(module_url)};
 
-const ownership = createTrustReadOwnership();
+const ownership = trustRequests.createTrustReadOwnership();
 const current = {{ overlay: "trust", overlayEpoch: 3, epoch: 7, route: "evals", apiBase: "http://api" }};
 for (const [lane, selection] of Object.entries({{
   "run-evidence": "run-b",
@@ -98,6 +98,13 @@ for (const [lane, selection] of Object.entries({{
   assert.equal(ownership.isCurrent(second, {{ ...current, lane, selection: "different" }}), false);
   assert.equal(ownership.isCurrent(second, {{ ...current, overlayEpoch: 4, lane, selection }}), false);
 }}
+assert.equal(typeof trustRequests.createTrustRunControlState, "function", "Trust exposes recoverable run-control state");
+const runControl = trustRequests.createTrustRunControlState();
+assert.equal(runControl.pending(), false);
+runControl.begin();
+assert.equal(runControl.pending(), true);
+runControl.settle();
+assert.equal(runControl.pending(), false, "a settled stale run cannot keep the next Evals view disabled");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
@@ -106,6 +113,9 @@ for (const [lane, selection] of Object.entries({{
         capture_output=True,
     )
     assert result.returncode == 0, result.stderr
+    assert "function syncTrustRunButton()" in HTML
+    assert "trustStartRunButton.disabled = trustRunControl.pending()" in HTML
+    assert "if (isTrustRequestCurrent(request)) trustStartRunButton.disabled = false" not in HTML
 
 
 def test_trust_center_does_not_render_static_success_or_mutate_gate_result() -> None:

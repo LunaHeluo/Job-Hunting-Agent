@@ -252,7 +252,17 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: node.version_id, resume_branch_id: node.branch_id, lineage_focus_version_id: node.version_id });
         onVersionSelect(node, { inspectorMount: elements.jobs });
         renderInspector(workspaceId, node, { isCurrent });
-      }, { preference, onPreferenceChange: savePreference });
+      }, { preference, onPreferenceChange: savePreference, selectedVersionId: selectedNode?.version_id });
+      const restoredNode = (map.nodes || []).find(node => node.version_id === selectedNode?.version_id);
+      if (restoredNode) {
+        selectedNode = restoredNode;
+        updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: restoredNode.version_id, resume_branch_id: restoredNode.branch_id, lineage_focus_version_id: restoredNode.version_id });
+        onVersionSelect(restoredNode, { inspectorMount: elements.jobs });
+        renderInspector(workspaceId, restoredNode, { isCurrent });
+      } else if (selectedNode) {
+        selectedNode = null;
+        onVersionSelect(null);
+      }
     } catch (error) { if (isCurrent()) elements.main.textContent = `版本地图加载失败：${error.message}`; }
   }
 

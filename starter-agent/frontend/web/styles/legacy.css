@@ -644,7 +644,10 @@
     }
 
     .settings-dialog {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       width: min(760px, 100%);
+      max-height: min(88dvh, 900px);
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--panel);
@@ -674,6 +677,26 @@
 
     .settings-dialog-body {
       padding: 18px;
+      overflow: auto;
+    }
+
+    .connection-settings {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      justify-content: stretch;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .connection-settings h3 {
+      grid-column: 1 / -1;
+      margin: 0 0 4px;
+    }
+
+    .connection-settings .field input,
+    .connection-settings .field select {
+      width: 100%;
     }
 
     .setting-row {

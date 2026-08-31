@@ -22,6 +22,23 @@ export class GraphRenderer {
     loadMore.type = "button";
     loadMore.textContent = "加载更多节点";
     loadMore.className = "version-map-load-more";
+    let selectedVersionId = options.selectedVersionId || "";
+    const selectedLineage = () => {
+      const lineage = new Set();
+      let cursor = selectedVersionId;
+      while (cursor) {
+        lineage.add(cursor);
+        cursor = (map.nodes || []).find(item => item.version_id === cursor)?.parent_version_id;
+      }
+      return lineage;
+    };
+    const applySelection = () => {
+      const lineage = selectedLineage();
+      for (const item of canvas.querySelectorAll(".version-node")) {
+        item.classList.toggle("is-lineage-focus", lineage.has(item.dataset.versionId));
+        item.setAttribute("aria-current", item.dataset.versionId === selectedVersionId ? "true" : "false");
+      }
+    };
     const draw = () => {
       canvas.replaceChildren();
       const query = search.value.trim().toLocaleLowerCase();
@@ -48,10 +65,8 @@ export class GraphRenderer {
           button.append(notice);
         }
         button.addEventListener("click", event => {
-          const lineage = new Set([node.version_id]);
-          let cursor = node.parent_version_id;
-          while (cursor) { lineage.add(cursor); cursor = (map.nodes || []).find(item => item.version_id === cursor)?.parent_version_id; }
-          for (const item of canvas.querySelectorAll(".version-node")) item.classList.toggle("is-lineage-focus", lineage.has(item.dataset.versionId));
+          selectedVersionId = node.version_id;
+          applySelection();
           onSelect(node, event);
         });
         button.addEventListener("dragend", event => {
@@ -71,6 +86,7 @@ export class GraphRenderer {
         });
         canvas.append(button);
       }
+      applySelection();
       loadMore.hidden = visible.length >= filtered.length;
     };
     search.addEventListener("input", () => { renderLimit = pageSize; draw(); });
