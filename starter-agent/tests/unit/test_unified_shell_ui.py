@@ -350,6 +350,22 @@ def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
     assert _effective_declaration("#workbenchMatchContent", "min-height", 1280) == "0"
 
 
+def test_desktop_profile_summary_uses_compact_vertical_spacing() -> None:
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-identity", "padding", 1280
+    ) == "10px 14px 7px"
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-metrics", "padding", 1280
+    ) == "8px 14px"
+    assert (
+        "body.workbench-active .workbench-profile-footer { padding: 8px 14px;"
+        in CSS
+    )
+    assert _effective_declaration(
+        "body.workbench-active .workbench-version-picker summary", "padding", 1280
+    ) == "7px 14px"
+
+
 def test_application_card_selection_notifies_the_context_rail() -> None:
     module_url = (WEB / "app/features/applications-board.js").resolve().as_uri()
     harness = f'''

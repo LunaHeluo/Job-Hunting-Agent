@@ -144,15 +144,16 @@ body.workbench-active .workbench-brand { gap: 0; }
 
 /* Compact profile summary: same paper/line palette as the surrounding cards. */
 body.workbench-active .workbench-profile-card { border-color: var(--wb-line); border-radius: 16px; background: var(--wb-paper); }
-body.workbench-active .workbench-profile-identity { padding: 14px 16px 9px; border-color: var(--wb-line); }
+body.workbench-active .workbench-profile-identity { padding: 10px 14px 7px; border-color: var(--wb-line); }
 body.workbench-active .workbench-profile-identity strong { font-size: 16px; }
 body.workbench-active .workbench-profile-identity span { font-size: 11px; }
 body.workbench-active .workbench-profile-identity span:last-child { font-size: 13px; }
-body.workbench-active .workbench-profile-metrics { gap: 12px; padding: 11px 16px; border-color: var(--wb-line); }
+body.workbench-active .workbench-profile-metrics { gap: 12px; padding: 8px 14px; border-color: var(--wb-line); }
 body.workbench-active .workbench-profile-metrics span { color: var(--wb-muted); font-size: 11px; }
 body.workbench-active .workbench-profile-metrics strong { font-size: 14px; }
-body.workbench-active .workbench-profile-footer { padding: 11px 16px; color: var(--wb-muted); font-size: 12px; }
+body.workbench-active .workbench-profile-footer { padding: 8px 14px; color: var(--wb-muted); font-size: 12px; }
 body.workbench-active .workbench-profile-footer button { min-height: 31px; padding: 4px 10px; border-color: var(--wb-line); background: var(--wb-paper); font-size: 12px; }
+body.workbench-active .workbench-version-picker summary { padding: 7px 14px; }
 
 /* The actual resume paper keeps its own border; wrapper frames are removed. */
 #workbenchMainContent:has(> .resume-document-preview) { display: block; min-height: 0; margin-top: 0; padding: 0; border: 0; }
