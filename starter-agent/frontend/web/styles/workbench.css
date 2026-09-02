@@ -70,7 +70,7 @@ body.workbench-active .workbench-profile-metrics strong { font-size: 15px; }
 body.workbench-active .workbench-profile-footer { padding: 13px 22px; }
 body.workbench-active .workbench-agent-actions button { font-size: 12px; }
 body.workbench-active .workbench-chat-dock .bubble { font-size: 13px; }
-body.workbench-active .match-score-number strong { font-size: clamp(42px, 4vw, 58px); }
+body.workbench-active .match-score-number strong { font-size: clamp(40px, 3.4vw, 48px); }
 body.workbench-active .match-score-number span { font-size: 14px; }
 body.workbench-active .match-job-summary h2 { font-size: clamp(17px, 1.6vw, 21px); }
 body.workbench-active .match-job-summary p,
@@ -197,4 +197,10 @@ body.workbench-active .workbench-chat-dock .composer-note { font-size: var(--wb-
 
 /* Separate the desktop canvas from its raised work surfaces. */
 .workbench-card { box-shadow: 0 8px 24px rgb(38 60 49 / 8%); }
-@media (min-width:1280px) { .workbench-profile-card { min-height: 0; } }
+@media (min-width:1280px) {
+  .workbench-layout { max-width: 1600px; }
+  body.workbench-active .workbench-layout { gap: 20px; }
+  .workbench-card { border-radius: 16px; }
+  .workbench-profile-card { min-height: 0; }
+  .workbench-canvas { padding: 24px; }
+}

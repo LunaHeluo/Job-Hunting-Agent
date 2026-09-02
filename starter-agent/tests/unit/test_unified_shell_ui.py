@@ -342,10 +342,12 @@ def test_s1_tokens_are_shared_by_shell_and_workbench() -> None:
     assert "--wb-bg: var(--app-bg)" in CSS
 
 
-def test_css_cascade_keeps_desktop_tracks_bounded_and_columns_equal_at_1280() -> None:
+def test_css_cascade_keeps_desktop_tracks_bounded_and_reference_proportioned() -> None:
     assert _effective_declaration(".workbench-layout", "grid-template-columns", 1280) == (
-        "clamp(270px, 18vw, 330px) minmax(620px, 1fr) clamp(260px, 18vw, 340px)"
+        "clamp(310px, 22vw, 330px) minmax(620px, 1fr) clamp(270px, 19vw, 300px)"
     )
+    assert _effective_declaration(".workbench-layout", "gap", 1440) == "20px"
+    assert _effective_declaration(".workbench-layout", "max-width", 1440) == "1600px"
     assert _effective_declaration(".workbench-layout", "height", 1280) == "var(--app-workspace-block-size)"
     for column in (".workbench-left", ".workbench-main", ".workbench-right"):
         assert _effective_declaration(column, "height", 1280) == "100%"
@@ -357,9 +359,9 @@ def test_css_cascade_uses_safe_flow_and_vertical_agent_layout_below_1280() -> No
     assert _effective_declaration(".workbench-chat-dock", "flex-direction", 1280) == "column"
 
 
-def test_desktop_left_rail_keeps_reference_ratio_and_visible_surface_layers() -> None:
+def test_desktop_left_rail_keeps_compact_profile_and_visible_surface_layers() -> None:
     assert _effective_declaration(".workbench-left", "grid-template-rows", 1280) == (
-        "minmax(0, 1fr) minmax(0, 4fr)"
+        "clamp(140px, 18vh, 160px) minmax(0, 1fr)"
     )
     assert _effective_declaration(".workbench-profile-card", "min-height", 1280) == "0"
 
@@ -372,6 +374,8 @@ def test_desktop_left_rail_keeps_reference_ratio_and_visible_surface_layers() ->
     contrast_distance = sum((left - right) ** 2 for left, right in zip(background, surface)) ** 0.5
     assert contrast_distance >= 30
     assert _effective_declaration(".workbench-card", "box-shadow", 1280) not in (None, "none")
+    assert _effective_declaration(".workbench-card", "border-radius", 1280) == "16px"
+    assert _effective_declaration(".workbench-canvas", "padding", 1280) == "24px"
 
 
 def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
@@ -416,7 +420,7 @@ def test_desktop_profile_auxiliary_copy_stays_visually_subordinate() -> None:
 def test_desktop_match_score_uses_compact_display_type() -> None:
     assert _effective_declaration(
         "body.workbench-active .match-score-number strong", "font-size", 1280
-    ) == "clamp(42px, 4vw, 58px)"
+    ) == "clamp(40px, 3.4vw, 48px)"
     assert _effective_declaration(
         "body.workbench-active .match-score-number span", "font-size", 1280
     ) == "14px"

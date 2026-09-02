@@ -75,13 +75,13 @@ body.modal-open {
     height: var(--app-workspace-block-size);
     min-height: 0;
     align-items: stretch;
-    grid-template-columns: clamp(270px, 18vw, 330px) minmax(620px, 1fr) clamp(260px, 18vw, 340px);
+    grid-template-columns: clamp(310px, 22vw, 330px) minmax(620px, 1fr) clamp(270px, 19vw, 300px);
     gap: var(--app-shell-gap);
   }
 
   .workbench-left {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 4fr);
+    grid-template-rows: clamp(140px, 18vh, 160px) minmax(0, 1fr);
     gap: var(--app-shell-gap);
     height: 100%;
     min-height: 0;
