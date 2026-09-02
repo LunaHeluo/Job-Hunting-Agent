@@ -403,7 +403,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function prepareSuggestions(workspaceId, analysis) {
-    activatePanel();
+    activatePanel({ resetScroll: true });
     elements.main.className = "";
     elements.main.textContent = "正在创建可恢复 Draft 并生成候选…";
     try {
@@ -425,7 +425,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function prepareTailoredResume(workspaceId, analysisId) {
-    activatePanel();
+    activatePanel({ resetScroll: true });
     elements.main.className = "";
     elements.main.textContent = "正在读取匹配分析并准备 AI 定制简历…";
     try {
@@ -497,7 +497,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   function renderTailoredSuggestions(workspaceId, analysis, suggestions, diagnostics = {}) {
-    activatePanel();
+    activatePanel({ resetScroll: true });
     elements.main.className = "";
     const panel = document.createElement("section"); panel.className = "suggestion-panel tailored-suggestion-panel";
     const header = document.createElement("header"); header.className = "tailored-suggestion-header";
@@ -600,7 +600,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function renderSuggestions(workspaceId, analysis) {
-    activatePanel();
+    activatePanel({ resetScroll: true });
     elements.main.className = "";
     elements.main.textContent = "正在加载建议…";
     try {

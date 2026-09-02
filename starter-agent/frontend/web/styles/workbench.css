@@ -204,4 +204,12 @@ body.workbench-active .workbench-chat-dock .composer-note { font-size: var(--wb-
   .workbench-card { border-radius: 16px; }
   .workbench-profile-card { min-height: 0; }
   .workbench-canvas { padding: 24px; }
+  .workspace-scroll-region > .workbench-section-heading { min-height: 52px; }
+  .resume-document-preview,
+  .match-analysis-panel,
+  .suggestion-panel { width: 100%; max-width: none; margin: 0; box-sizing: border-box; }
+  .resume-document-body { max-height: none; overflow: visible; scrollbar-gutter: auto; }
+}
+@media (max-width:1279px) {
+  .workspace-scroll-region[data-content-panel="archive"][data-has-resume="true"] > .workbench-section-heading { display: none; }
 }

@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=20260823-workbench-polish";
-import { createJobMatching } from "./job-matching.js?v=20260823-workbench-polish";
+import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui";
+import { createJobMatching } from "./job-matching.js?v=compact-ui";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js";
@@ -18,6 +18,40 @@ export function createRouteActivationCoordinator({ activate, onStart, onActivate
         if (token === epoch) onCurrent(route);
       });
       return true;
+    },
+  });
+}
+
+export function contentPanelPresentation(panel, hasResume = false) {
+  const archive = panel !== "match";
+  return Object.freeze({
+    archive,
+    headingHidden: false,
+    mode: archive ? "档案" : "匹配分数",
+    title: archive
+      ? (hasResume ? "当前简历档案" : "建立你的第一份简历档案")
+      : "准备匹配评估",
+  });
+}
+
+export function createContentPanelCoordinator({ scrollRegion, render }) {
+  let activePanel = "archive";
+  let attached = true;
+  const scrollPositions = new Map();
+  return Object.freeze({
+    show(panel, { resetScroll = false } = {}) {
+      if (attached) {
+        scrollPositions.set(activePanel, Math.max(0, Number(scrollRegion.scrollTop) || 0));
+      }
+      activePanel = panel;
+      render(panel);
+      scrollRegion.scrollTop = resetScroll ? 0 : (scrollPositions.get(panel) || 0);
+      attached = true;
+    },
+    suspend() {
+      if (!attached) return;
+      scrollPositions.set(activePanel, Math.max(0, Number(scrollRegion.scrollTop) || 0));
+      attached = false;
     },
   });
 }
@@ -82,26 +116,29 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     renderContext({ title: "投递详情", description: "当前选中的投递记录", content: panel });
   }
 
-  function setContentHeadingVisibility(panel) {
-    const heading = elements.title.closest(".workbench-section-heading");
+  const contentScrollRegion = elements.scrollRegion || { scrollTop: 0, dataset: {} };
+
+  function applyContentPanelPresentation(panel) {
     const hasResume = Boolean(currentHome?.recent_versions?.[0]);
-    // 档案页已有完整的纸张预览标题，不再重复显示“当前简历档案”。
-    heading.hidden = panel !== "match" && hasResume;
+    const presentation = contentPanelPresentation(panel, hasResume);
+    elements.main.hidden = !presentation.archive;
+    elements.match.hidden = presentation.archive;
+    elements.archiveTab.setAttribute("aria-current", presentation.archive ? "page" : "false");
+    elements.matchTab.setAttribute("aria-current", presentation.archive ? "false" : "page");
+    elements.mode.textContent = presentation.mode;
+    elements.title.closest(".workbench-section-heading").hidden = presentation.headingHidden;
+    elements.title.textContent = presentation.title;
+    contentScrollRegion.dataset.contentPanel = panel;
+    contentScrollRegion.dataset.hasResume = String(hasResume);
   }
 
-  function showContentPanel(panel) {
-    const archive = panel !== "match";
-    elements.main.hidden = !archive;
-    elements.match.hidden = archive;
-    elements.archiveTab.setAttribute("aria-current", archive ? "page" : "false");
-    elements.matchTab.setAttribute("aria-current", archive ? "false" : "page");
-    elements.mode.textContent = archive ? "档案" : "匹配分数";
-    setContentHeadingVisibility(panel);
-    if (archive) {
-      elements.title.textContent = currentHome?.recent_versions?.[0] ? "当前简历档案" : "建立你的第一份简历档案";
-    } else {
-      elements.title.textContent = "准备匹配评估";
-    }
+  const contentPanelCoordinator = createContentPanelCoordinator({
+    scrollRegion: contentScrollRegion,
+    render: applyContentPanelPresentation,
+  });
+
+  function showContentPanel(panel, options = {}) {
+    contentPanelCoordinator.show(panel, options);
   }
 
   function setStatus(message, error = false) {
@@ -141,7 +178,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   const jobMatching = createJobMatching({
     request,
     elements: { main: elements.match, jobs: elements.jobList, status: elements.status },
-    activatePanel: () => showContentPanel("match"),
+    activatePanel: options => showContentPanel("match", options),
     reloadHome: () => load(true),
   });
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
@@ -268,9 +305,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       C: ["准备匹配评估", "选择已确认的简历版本和岗位快照；分析结果将展示要求项与证据。"],
       D: ["确认本次修改", "逐条审批建议后，再保存并确认新版本。"],
     }[mode];
-    elements.mode.textContent = elements.match.hidden ? "档案" : "匹配分数";
-    elements.title.textContent = elements.match.hidden && home.recent_versions?.[0] ? "当前简历档案" : copy[0];
-    setContentHeadingVisibility(elements.match.hidden ? "archive" : "match");
+    applyContentPanelPresentation(elements.match.hidden ? "archive" : "match");
     elements.main.textContent = copy[1];
     elements.jobCount.textContent = `${stats.job_count || 0} 个`;
     elements.jobList.textContent = stats.job_count
@@ -413,5 +448,10 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     showContentPanel("match");
     await jobMatching.prepareTailoredResume(workspaceId, analysisId);
   }
-  return Object.freeze({ activate, load, tailorResume });
+  return Object.freeze({
+    activate,
+    load,
+    tailorResume,
+    suspendContentScroll: () => contentPanelCoordinator.suspend(),
+  });
 }

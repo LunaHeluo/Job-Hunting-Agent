@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -296,6 +296,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         operationCards: document.querySelector("#workbenchOperationCards"),
         mode: document.querySelector("#workbenchModeLabel"),
         title: document.querySelector("#workbenchTitle"),
+        scrollRegion: document.querySelector(".workspace-scroll-region"),
         main: document.querySelector("#workbenchMainContent"),
         match: document.querySelector("#workbenchMatchContent"),
         contextTitle: document.querySelector("#workbenchContextTitle"),
@@ -4144,17 +4145,24 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     let renderedPrimaryRoute = shellState.snapshot().primaryRoute;
 
     function rememberRouteScroll(route) {
-      shellState.rememberScroll(`${route}:center`, workbenchCenterScroll.scrollTop);
+      if (route !== "workbench") {
+        shellState.rememberScroll(`${route}:center`, workbenchCenterScroll.scrollTop);
+      }
       shellState.rememberScroll(`${route}:context`, workbenchContextScroll.scrollTop);
     }
 
     function restoreRouteScroll(route) {
-      workbenchCenterScroll.scrollTop = shellState.scrollFor(`${route}:center`);
+      if (route !== "workbench") {
+        workbenchCenterScroll.scrollTop = shellState.scrollFor(`${route}:center`);
+      }
       workbenchContextScroll.scrollTop = shellState.scrollFor(`${route}:context`);
     }
 
     const routeActivation = createRouteActivationCoordinator({
       onStart(route) {
+        if (renderedPrimaryRoute === "workbench" && route !== "workbench") {
+          workbenchShell.suspendContentScroll();
+        }
         rememberRouteScroll(renderedPrimaryRoute);
         shellState.navigate(route);
         workbenchPageTab.setAttribute("aria-current", route === "workbench" ? "page" : "false");

@@ -102,11 +102,16 @@ def parse_html_tree() -> IdTreeParser:
     return parser
 
 
-def test_css_assets_use_compact_ui_cache_namespace() -> None:
+def test_frontend_assets_use_compact_ui_cache_namespace() -> None:
     app_css = (WEB / "styles/app.css").read_text(encoding="utf-8")
+    workbench_shell = (WEB / "app/features/workbench-shell.js").read_text(encoding="utf-8")
 
-    assert 'href="./styles/app.css?v=compact-ui"' in HTML
-    assert '@import url("./workbench.css?v=compact-ui")' in app_css
+    assert 'href="./styles/app.css?v=compact-ui&amp;layout=stable"' in HTML
+    assert '@import url("./workbench.css?v=compact-ui&layout=stable")' in app_css
+    assert 'src="./app.js?v=compact-ui"' in HTML
+    assert 'from "./app/features/workbench-shell.js?v=compact-ui"' in APP
+    assert 'from "./resume-workspace.js?v=compact-ui"' in workbench_shell
+    assert 'from "./job-matching.js?v=compact-ui"' in workbench_shell
 
 
 def test_shell_state_separates_primary_routes_from_advanced_windows() -> None:
@@ -138,6 +143,8 @@ def test_app_uses_primary_only_routing_and_never_moves_chat_dom() -> None:
         'openAdvancedWindow("knowledge"',
         'openAdvancedWindow("capabilities"',
         'openAdvancedWindow("trust"',
+        "workbenchShell.suspendContentScroll()",
+        'route !== "workbench"',
     ):
         assert contract in APP
     assert ".append(chatDock)" not in APP
@@ -387,6 +394,41 @@ def test_desktop_left_rail_keeps_compact_profile_and_visible_surface_layers() ->
 
 def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
     assert _effective_declaration("#workbenchMatchContent", "min-height", 1280) == "0"
+
+
+def test_desktop_workspace_surfaces_keep_the_same_content_width() -> None:
+    for selector in (
+        ".resume-document-preview",
+        ".match-analysis-panel",
+        ".suggestion-panel",
+    ):
+        assert _effective_declaration(selector, "width", 1280, exact_selector=True) == "100%"
+        assert _effective_declaration(selector, "max-width", 1280, exact_selector=True) == "none"
+        assert _effective_declaration(selector, "margin", 1280, exact_selector=True) == "0"
+
+
+def test_desktop_resume_document_uses_the_workspace_scroll_region() -> None:
+    assert _effective_declaration(
+        ".resume-document-body", "max-height", 1280, exact_selector=True
+    ) == "none"
+    assert _effective_declaration(
+        ".resume-document-body", "overflow", 1280, exact_selector=True
+    ) == "visible"
+    assert _effective_declaration(
+        ".workspace-scroll-region > .workbench-section-heading",
+        "min-height",
+        1280,
+        exact_selector=True,
+    ) == "52px"
+
+
+def test_existing_mobile_archive_heading_remains_collapsed() -> None:
+    assert _effective_declaration(
+        '.workspace-scroll-region[data-content-panel="archive"][data-has-resume="true"] > .workbench-section-heading',
+        "display",
+        1024,
+        exact_selector=True,
+    ) == "none"
 
 
 def test_desktop_profile_summary_uses_compact_vertical_spacing() -> None:
@@ -677,6 +719,59 @@ assert.deepEqual(restored, ["applications"]);
     )
     assert result.returncode == 0, result.stderr
     assert "createRouteActivationCoordinator" in APP
+
+
+def test_content_panel_coordinator_keeps_heading_and_restores_each_tab_scroll() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import {{ contentPanelPresentation, createContentPanelCoordinator }} from {json.dumps(module_url)};
+
+assert.deepEqual(contentPanelPresentation("archive", true), {{
+  archive: true,
+  headingHidden: false,
+  mode: "档案",
+  title: "当前简历档案",
+}});
+assert.deepEqual(contentPanelPresentation("match", true), {{
+  archive: false,
+  headingHidden: false,
+  mode: "匹配分数",
+  title: "准备匹配评估",
+}});
+
+const scrollRegion = {{ scrollTop: 140 }};
+const rendered = [];
+const coordinator = createContentPanelCoordinator({{
+  scrollRegion,
+  render: panel => rendered.push(panel),
+}});
+
+coordinator.show("match");
+assert.equal(scrollRegion.scrollTop, 0);
+scrollRegion.scrollTop = 260;
+coordinator.show("archive");
+assert.equal(scrollRegion.scrollTop, 140);
+scrollRegion.scrollTop = 180;
+coordinator.show("match");
+assert.equal(scrollRegion.scrollTop, 260);
+scrollRegion.scrollTop = 400;
+coordinator.show("match", {{ resetScroll: true }});
+assert.equal(scrollRegion.scrollTop, 0);
+scrollRegion.scrollTop = 310;
+coordinator.suspend();
+scrollRegion.scrollTop = 900;
+coordinator.show("archive");
+assert.equal(scrollRegion.scrollTop, 180, "route scroll must not overwrite the saved archive offset");
+assert.deepEqual(rendered, ["match", "archive", "match", "match", "archive"]);
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_real_shell_discards_late_version_map_render_after_applications_renders() -> None:
