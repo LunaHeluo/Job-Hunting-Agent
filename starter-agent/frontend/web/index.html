@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <title>Starter Agent</title>
-  <link rel="stylesheet" href="./styles/app.css?v=20260821-compact-workbench-type">
+  <link rel="stylesheet" href="./styles/app.css?v=20260823-workbench-polish">
 </head>
 <body>
   <main class="app">
@@ -302,18 +302,22 @@
 
     <section id="workbenchView" class="workbench-view" hidden aria-labelledby="workbenchTitle">
       <header class="workbench-topbar">
-        <div class="workbench-brand"><strong>Resume Agent</strong><span>本地优先简历工作台</span></div>
+        <div class="workbench-brand"><strong>Resume Agent</strong></div>
         <nav class="workbench-primary-tabs" aria-label="简历工作台导航">
           <button id="workbenchPageTab" type="button" aria-current="page">工作台</button>
           <button id="versionMapPageTab" type="button">版本地图</button>
           <button id="applicationsPageTab" type="button">投递看板</button>
         </nav>
-        <label class="workbench-workspace-select">求职目标
-          <select id="workbenchWorkspaceSelect" aria-label="当前求职目标"></select>
-          <button id="workbenchSettingsButton" type="button" aria-label="打开设置与高级功能">设置</button>
-        </label>
+        <select id="workbenchWorkspaceSelect" hidden aria-label="当前求职目标"></select>
       </header>
-      <div id="workbenchStatus" class="workbench-status" aria-live="polite">正在加载工作台…</div>
+      <div id="workbenchStatus" class="workbench-status" aria-live="polite" hidden>正在加载工作台…</div>
+      <nav id="workbenchProgressSteps" class="workbench-progress" aria-label="简历定制进度" hidden>
+        <ol>
+          <li id="workbenchStageResume" data-state="current"><span>1</span>未建档</li>
+          <li id="workbenchStageJob" data-state="pending"><span>2</span>待投递</li>
+          <li id="workbenchStageAnalysis" data-state="pending"><span>3</span>分析中</li>
+        </ol>
+      </nav>
       <div class="workbench-layout">
         <aside class="workbench-left" aria-label="简历档案与 Agent">
           <section class="workbench-card workbench-profile-card">
@@ -331,19 +335,33 @@
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传新档案</button></div>
           </section>
           <section class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
-            <div class="workbench-section-heading"><h2 id="workbenchAgentTitle">Starter Agent</h2><span class="status-label">沿用现有会话</span></div>
-            <p id="workbenchAgentContext">选择档案和岗位后，Agent 将使用显式工作台上下文。</p>
-            <div id="workbenchAgentActions" class="workbench-agent-actions">
-              <button type="button" data-agent-action="explain_score">解释当前分数</button>
-              <button type="button" data-agent-action="rewrite_section">重写当前段落</button>
-              <button type="button" data-agent-action="compare_versions">比较选中版本</button>
-              <button type="button" data-agent-action="review_merge">审查合并方案</button>
-              <button type="button" data-agent-action="confirm_version">确认待确认版本</button>
-              <button type="button" data-agent-action="mark_applied">记录“我投了”</button>
+            <div class="workbench-section-heading workbench-agent-heading">
+              <h2 id="workbenchAgentTitle">Starter Agent</h2>
+              <div class="workbench-agent-heading-actions">
+                <button id="workbenchTailorResumeButton" class="workbench-agent-tailor" type="button" hidden>AI 定制简历</button>
+                <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
+              </div>
             </div>
-            <div id="workbenchAgentActionCard" class="workbench-agent-action-card" aria-live="polite"></div>
             <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话"></div>
-            <details class="workbench-task-center">
+            <div id="workbenchAgentSuggestions" class="workbench-agent-suggestions">
+              <span class="workbench-agent-suggestions-label">你可以试试</span>
+              <div id="workbenchAgentActions" class="workbench-agent-actions">
+                <button type="button" data-agent-action="ai_edit_resume">AI 修改简历</button>
+                <button type="button" data-agent-action="explain_score">解释当前分数</button>
+                <button type="button" data-agent-action="tailor_resume">AI 定制简历</button>
+                <button type="button" data-agent-action="rewrite_section">优化匹配短板</button>
+                <button type="button" data-agent-action="compare_versions" hidden>比较简历版本</button>
+                <button type="button" data-agent-action="review_merge" hidden>审查合并方案</button>
+                <button type="button" data-agent-action="confirm_version" hidden>确认待确认版本</button>
+                <button type="button" data-agent-action="mark_applied" hidden>投递前检查</button>
+              </div>
+            </div>
+            <details class="workbench-agent-context-panel">
+              <summary>当前上下文</summary>
+              <p id="workbenchAgentContext">选择档案和岗位后，Agent 将使用显式工作台上下文。</p>
+              <div id="workbenchAgentActionCard" class="workbench-agent-action-card" aria-live="polite"></div>
+            </details>
+            <details class="workbench-task-center" hidden>
               <summary>业务任务与执行进度</summary>
               <div id="workbenchOperationCards" aria-live="polite"></div>
             </details>
@@ -351,9 +369,20 @@
         </aside>
         <main class="workbench-main" aria-labelledby="workbenchTitle">
           <section class="workbench-card workbench-canvas">
+            <section id="workbenchStageCallout" class="workbench-stage-callout" aria-live="polite">
+              <div>
+                <span id="workbenchStageEyebrow">当前阶段 · 未建档</span>
+                <h2 id="workbenchStageTitle">先建立可信简历档案</h2>
+                <p id="workbenchStageDescription">上传 DOCX 或 PDF，解析完成后再进入岗位匹配。</p>
+              </div>
+              <div class="workbench-stage-actions">
+                <button id="workbenchStageSecondary" type="button" hidden></button>
+                <button id="workbenchStagePrimary" class="primary-action" type="button">上传简历</button>
+              </div>
+            </section>
             <nav class="workbench-content-tabs" aria-label="工作区内容">
               <button id="workbenchArchiveTab" type="button" aria-current="page">档案</button>
-              <button id="workbenchMatchTab" type="button">匹配分数</button>
+              <button id="workbenchMatchTab" type="button">岗位匹配</button>
             </nav>
             <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
             <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
@@ -448,6 +477,6 @@
     </section>
   </div>
 
-  <script type="module" src="./app.js?v=20260821-job-rail-overview"></script>
+  <script type="module" src="./app.js?v=20260823-workbench-polish"></script>
 </body>
 </html>

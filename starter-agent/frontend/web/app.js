@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell } from "./app/features/workbench-shell.js?v=20260821-job-rail-overview";
+import { createWorkbenchShell } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, createStore });
 
@@ -204,6 +204,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const delegationRunDetail = document.querySelector("#delegationRunDetail");
     const chatDock = document.querySelector("#chatDock");
     const workbenchChatDock = document.querySelector("#workbenchChatDock");
+    const workbenchAgentSuggestions = document.querySelector("#workbenchAgentSuggestions");
     const messageInput = document.querySelector("#messageInput");
     const sendButton = document.querySelector("#sendButton");
     const clearButton = document.querySelector("#clearButton");
@@ -301,6 +302,19 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         match: document.querySelector("#workbenchMatchContent"),
         archiveTab: document.querySelector("#workbenchArchiveTab"),
         matchTab: document.querySelector("#workbenchMatchTab"),
+        view: document.querySelector("#workbenchView"),
+        candidateRail: document.querySelector("#workbenchCandidateRail"),
+        stageResume: document.querySelector("#workbenchStageResume"),
+        stageJob: document.querySelector("#workbenchStageJob"),
+        stageAnalysis: document.querySelector("#workbenchStageAnalysis"),
+        stageEyebrow: document.querySelector("#workbenchStageEyebrow"),
+        stageTitle: document.querySelector("#workbenchStageTitle"),
+        stageDescription: document.querySelector("#workbenchStageDescription"),
+        stagePrimary: document.querySelector("#workbenchStagePrimary"),
+        stageSecondary: document.querySelector("#workbenchStageSecondary"),
+        agentActions: document.querySelector("#workbenchAgentActions"),
+        taskCenter: document.querySelector(".workbench-task-center"),
+        tailorResumeButton: document.querySelector("#workbenchTailorResumeButton"),
       },
     });
     let activeKnowledgeBaseId = null;
@@ -4082,6 +4096,15 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       const trust = view === "trust";
       const workbench = view === "workbench" || view === "version-map" || view === "applications";
       (workbench ? workbenchChatDock : chatView).append(chatDock);
+      if (workbench) {
+        const composerWrap = chatDock.querySelector(".composer-wrap");
+        if (composerWrap && workbenchAgentSuggestions.parentElement !== chatDock) {
+          composerWrap.before(workbenchAgentSuggestions);
+        }
+        workbenchAgentSuggestions.hidden = false;
+      } else {
+        workbenchAgentSuggestions.hidden = true;
+      }
       chatView.hidden = knowledge || capabilities || trust || workbench;
       knowledgeView.hidden = !knowledge;
       capabilitiesView.hidden = !capabilities;
@@ -4421,17 +4444,32 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       const context = getWorkbenchContext();
       const card = document.querySelector("#workbenchAgentActionCard");
       card.replaceChildren();
-      if (!context?.workspace_id) { card.textContent = "请先选择求职目标。"; return; }
+      if (!context?.workspace_id && action !== "prepare_resume") { card.textContent = "请先建立简历档案。"; return; }
       const chatPrompts = {
+        prepare_resume: "我还没有建立简历档案。请给我一份精简的准备清单，告诉我上传简历前应该整理哪些教育、实习、项目、技能和可量化成果。",
+        ai_edit_resume: "请基于当前工作台中已载入的简历，先指出最值得修改的三处，再为每一处给出可核验的改写候选。保持事实边界，不要编造经历、技能或数据，也不要自动保存版本。",
         rewrite_section: "请基于当前工作台上下文，指出最值得改写的一段，并给出可核验的改写候选。不要编造经历，也不要自动保存版本。",
         compare_versions: "请比较当前工作台中选定的简历版本，说明主要差异、可能影响和建议保留的内容。只做分析，不要修改版本。",
         review_merge: "请审查当前工作台中的合并方案，说明冲突点、风险和推荐的人工决策。不要自动提交合并。",
         confirm_version: "请检查当前待确认的简历版本是否适合确认，列出确认前需要人工核对的事项。不要替我确认版本。",
         mark_applied: "请根据当前工作台中的岗位和简历版本，帮我核对投递前的最后检查项，并给出投递后的跟进建议。不要替我记录投递。",
       };
+      if (action === "tailor_resume") {
+        if (!context.match_analysis_id) {
+          card.textContent = "请先选择岗位并完成一次匹配分析，再生成 AI 定制简历。";
+          return;
+        }
+        card.textContent = "正在基于当前匹配分析创建可恢复 Draft…";
+        try {
+          await workbenchShell.tailorResume(context);
+          card.textContent = "定制建议已生成。请在中间区域逐条核对、编辑并决定是否接受。";
+        } catch (error) {
+          card.textContent = `AI 定制简历未生成：${error.message}`;
+        }
+        return;
+      }
       if (chatPrompts[action]) {
         if (state.isSending) { card.textContent = "Agent 正在回复上一条消息，请稍后再试。"; return; }
-        document.querySelector("#workbenchAgentActions").replaceChildren();
         messageInput.value = chatPrompts[action];
         state.skipKnowledgeForNextMessage = true;
         hideToolMenu();
@@ -4455,7 +4493,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
             `- ${item.verdict}｜${item.original_text.slice(0, 180)}｜${item.explanation.slice(0, 180)}`
           ).join("\n");
           card.replaceChildren();
-          document.querySelector("#workbenchAgentActions").replaceChildren();
           messageInput.value = `请解释当前匹配分数（${score}/100，共 ${requirementCount} 个要求）。\n评分维度：${dimensions || "未提供"}\n要求分析：\n${requirements || "未提供"}\n\n请说明得分的关键原因、已匹配证据、主要缺口，以及最优先的改进建议。只基于以上经过验证的工作台分析回答，不要编造经历或自动修改简历。`;
           state.skipKnowledgeForNextMessage = true;
           hideToolMenu();
