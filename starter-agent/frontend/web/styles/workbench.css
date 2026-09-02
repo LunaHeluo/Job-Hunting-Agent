@@ -193,3 +193,7 @@ body.workbench-active .workbench-chat-dock .composer-note { font-size: var(--wb-
 .workbench-job-match-summary strong { font-size: 13px; }
 .workbench-job-match-summary p { margin: 0; font-size: 12px; line-height: 1.55; }
 .workbench-job-research { align-self: flex-start; min-height: 32px; padding: 5px 10px; font-size: 12px; }
+
+/* Separate the desktop canvas from its raised work surfaces. */
+.workbench-card { box-shadow: 0 8px 24px rgb(38 60 49 / 8%); }
+@media (min-width:1280px) { .workbench-profile-card { min-height: 0; } }

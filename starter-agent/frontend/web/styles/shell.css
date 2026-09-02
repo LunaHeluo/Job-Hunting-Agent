@@ -1,9 +1,9 @@
 :root {
-  --app-bg: #f4f1e9;
+  --app-bg: #e4ebf0;
   --app-surface: #fffdf8;
   --app-ink: #263c31;
   --app-muted: #68716b;
-  --app-line: #dfd9cc;
+  --app-line: #cbd5d9;
   --app-accent: #176b4d;
   --app-accent-soft: #dcefe3;
   --app-header-block-size: 54px;
@@ -81,7 +81,7 @@ body.modal-open {
 
   .workbench-left {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 4fr);
     gap: var(--app-shell-gap);
     height: 100%;
     min-height: 0;

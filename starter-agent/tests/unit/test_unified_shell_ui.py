@@ -331,7 +331,8 @@ def test_desktop_shell_has_one_equal_height_geometry_contract() -> None:
 
 def test_s1_tokens_are_shared_by_shell_and_workbench() -> None:
     for token in (
-        "--app-bg: #f4f1e9", "--app-surface: #fffdf8", "--app-ink: #263c31",
+        "--app-bg: #e4ebf0", "--app-surface: #fffdf8", "--app-line: #cbd5d9",
+        "--app-ink: #263c31",
         "--app-accent: #176b4d", "--app-accent-soft: #dcefe3",
     ):
         assert token in CSS
@@ -349,8 +350,25 @@ def test_css_cascade_keeps_desktop_tracks_bounded_and_columns_equal_at_1280() ->
 
 def test_css_cascade_uses_safe_flow_and_vertical_agent_layout_below_1280() -> None:
     assert _effective_declaration(".workbench-layout", "grid-template-columns", 1024) == "1fr"
-    assert _effective_declaration(".workbench-left", "grid-template-rows", 1280) == "auto minmax(0, 1fr)"
+    assert _effective_declaration(".workbench-left", "grid-template-rows", 1023) == "auto minmax(470px,1fr)"
     assert _effective_declaration(".workbench-chat-dock", "flex-direction", 1280) == "column"
+
+
+def test_desktop_left_rail_keeps_reference_ratio_and_visible_surface_layers() -> None:
+    assert _effective_declaration(".workbench-left", "grid-template-rows", 1280) == (
+        "minmax(0, 1fr) minmax(0, 4fr)"
+    )
+    assert _effective_declaration(".workbench-profile-card", "min-height", 1280) == "0"
+
+    def rgb(css_color: str) -> tuple[int, int, int]:
+        value = css_color.removeprefix("#")
+        return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+    background = rgb(_effective_declaration(":root", "--app-bg", 1280) or "")
+    surface = rgb(_effective_declaration(":root", "--app-surface", 1280) or "")
+    contrast_distance = sum((left - right) ** 2 for left, right in zip(background, surface)) ** 0.5
+    assert contrast_distance >= 30
+    assert _effective_declaration(".workbench-card", "box-shadow", 1280) not in (None, "none")
 
 
 def test_css_cascade_allows_match_scroll_item_to_shrink_on_desktop() -> None:
