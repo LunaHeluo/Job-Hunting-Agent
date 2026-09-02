@@ -25,11 +25,12 @@ const IMPORT_FAILURES = Object.freeze({
   jd_content_empty_after_parse: "文件未提取到可用的简历文本。",
 });
 
-export function createResumeWorkspace({ request, apiBase, elements, reloadHome }) {
+export function createResumeWorkspace({ request, apiBase, elements, reloadHome, onVersionSelect = () => {} }) {
   const graph = new GraphRenderer();
   let selectedNode = null;
   let activeResumeId = null;
   let activeMap = null;
+  let lifecycleIsCurrent = () => true;
 
   function button(label, onClick, className = "") {
     const item = document.createElement("button");
@@ -213,7 +214,10 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
 
   function cleanResumeLine(line) { return line.replace(/^\s*(?:#{1,6}\s*|[-*+•]\s*)/, "").replace(/[*_`]/g, "").trim(); }
 
-  async function renderVersionMap(workspaceId, resumeId) {
+  async function renderVersionMap(workspaceId, resumeId, options = {}) {
+    if (typeof options.isCurrent === "function") lifecycleIsCurrent = options.isCurrent;
+    const isCurrent = lifecycleIsCurrent;
+    if (!isCurrent()) return;
     activeResumeId = resumeId;
     elements.main.textContent = "正在加载版本血缘…";
     try {
@@ -221,6 +225,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/version-map`),
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/view-preference`).catch(error => error.status === 404 ? null : Promise.reject(error)),
       ]);
+      if (!isCurrent()) return;
       activeMap = map;
       let preference = savedPreference || { node_positions: {}, collapsed_branch_ids: [], viewport_x: 0, viewport_y: 0, viewport_zoom: 1, revision: null };
       let preferenceTimer = null;
@@ -234,22 +239,34 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
               body: JSON.stringify({ node_positions: preference.node_positions || {}, collapsed_branch_ids: preference.collapsed_branch_ids || [], viewport_x: preference.viewport_x || 0, viewport_y: preference.viewport_y || 0, viewport_zoom: preference.viewport_zoom || 1, expected_revision: preference.revision || null }),
             });
             preference = saved;
-          } catch (error) { elements.status.textContent = `视图偏好保存失败（业务血缘未改变）：${error.message}`; }
+          } catch (error) { if (isCurrent()) elements.status.textContent = `视图偏好保存失败（业务血缘未改变）：${error.message}`; }
         }, 250);
       };
       graph.render(elements.main, map, async (node, event) => {
+        if (!isCurrent()) return;
         if (event.shiftKey && selectedNode && selectedNode.version_id !== node.version_id) {
           await renderDiff(workspaceId, selectedNode, node);
           return;
         }
         selectedNode = node;
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: node.version_id, resume_branch_id: node.branch_id, lineage_focus_version_id: node.version_id });
-        renderInspector(workspaceId, node);
-      }, { preference, onPreferenceChange: savePreference });
-    } catch (error) { elements.main.textContent = `版本地图加载失败：${error.message}`; }
+        onVersionSelect(node, { inspectorMount: elements.jobs });
+        renderInspector(workspaceId, node, { isCurrent });
+      }, { preference, onPreferenceChange: savePreference, selectedVersionId: selectedNode?.version_id });
+      const restoredNode = (map.nodes || []).find(node => node.version_id === selectedNode?.version_id);
+      if (restoredNode) {
+        selectedNode = restoredNode;
+        updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: restoredNode.version_id, resume_branch_id: restoredNode.branch_id, lineage_focus_version_id: restoredNode.version_id });
+        onVersionSelect(restoredNode, { inspectorMount: elements.jobs });
+        renderInspector(workspaceId, restoredNode, { isCurrent });
+      } else if (selectedNode) {
+        selectedNode = null;
+        onVersionSelect(null);
+      }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `版本地图加载失败：${error.message}`; }
   }
 
-  function renderInspector(workspaceId, node) {
+  function renderInspector(workspaceId, node, { isCurrent = lifecycleIsCurrent } = {}) {
     elements.jobs.replaceChildren();
     const panel = document.createElement("section"); panel.className = "version-inspector";
     const title = document.createElement("h3"); title.textContent = node.label;
@@ -257,7 +274,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     const open = button("在工作台打开", () => openDraft(workspaceId, node));
     const compare = button("Shift 选择第二个版本比较", () => { elements.status.textContent = "按住 Shift 选择另一节点；比较只读取后端 Diff。"; });
     const branch = button("从此版本创建方向分支", () => createDirectionBranch(workspaceId, node));
-    const merge = button("创建三方合并方案", () => createMergeProposal(workspaceId, node));
+    const merge = button("创建三方合并方案", () => createMergeProposal(workspaceId, node, { isCurrent }));
     const exportStatus = document.createElement("div"); exportStatus.className = "operation-status"; exportStatus.setAttribute("aria-live", "polite");
     const template = document.createElement("select"); template.setAttribute("aria-label", "导出模板");
     template.append(new Option("ATS 清爽", "ats-clean@1.0.0"), new Option("ATS 紧凑", "ats-compact@1.0.0"));
@@ -296,17 +313,19 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     } catch (error) { status.textContent = `导出失败：${error.message}`; }
   }
 
-  async function renderDiff(workspaceId, left, right) {
+  async function renderDiff(workspaceId, left, right, { isCurrent = lifecycleIsCurrent } = {}) {
+    if (!isCurrent()) return;
     elements.main.textContent = "正在计算共同祖先与差异…";
     try {
       const diff = await request(`/v1/workbench/resume-versions/${encodeURIComponent(left.version_id)}/compare/${encodeURIComponent(right.version_id)}?workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (!isCurrent()) return;
       const panel = document.createElement("section"); panel.className = "version-diff-panel";
       const title = document.createElement("h2"); title.textContent = `${left.label} ↔ ${right.label}`;
       const ancestor = document.createElement("p"); ancestor.textContent = `共同祖先：${diff.common_ancestor_version_id || "无"}`;
       const pre = document.createElement("pre"); pre.textContent = (diff.unified || []).join("\n") || "正文无差异";
       panel.append(title, ancestor, pre, button("返回版本地图", () => renderVersionMap(workspaceId, activeResumeId)));
       elements.main.replaceChildren(panel);
-    } catch (error) { elements.main.textContent = `比较失败：${error.message}`; }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `比较失败：${error.message}`; }
   }
 
   async function createDirectionBranch(workspaceId, node) {
@@ -376,7 +395,8 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     panel.append(heading, editor, actions, status); elements.main.replaceChildren(panel);
   }
 
-  async function createMergeProposal(workspaceId, targetNode) {
+  async function createMergeProposal(workspaceId, targetNode, { isCurrent = lifecycleIsCurrent } = {}) {
+    if (!isCurrent()) return;
     const baseDefault = targetNode.parent_version_id || "";
     const baseVersionId = window.prompt("共同祖先版本 ID", baseDefault);
     if (!baseVersionId?.trim()) return;
@@ -389,11 +409,13 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proposal_id: `mp_${token}`, workspace_id: workspaceId, target_branch_id: targetNode.branch_id, base_version_id: baseVersionId.trim(), upstream_version_id: upstreamVersionId.trim(), target_version_id: targetNode.version_id }),
       });
-      renderMergeProposal(workspaceId, proposal);
-    } catch (error) { elements.status.textContent = `合并方案创建失败：${error.message}`; }
+      if (!isCurrent()) return;
+      renderMergeProposal(workspaceId, proposal, { isCurrent });
+    } catch (error) { if (isCurrent()) elements.status.textContent = `合并方案创建失败：${error.message}`; }
   }
 
-  function renderMergeProposal(workspaceId, initialProposal) {
+  function renderMergeProposal(workspaceId, initialProposal, { isCurrent = lifecycleIsCurrent } = {}) {
+    if (!isCurrent()) return;
     let proposal = initialProposal;
     const panel = document.createElement("section"); panel.className = "merge-proposal-panel";
     const title = document.createElement("h2"); title.textContent = "三方合并方案";
@@ -401,6 +423,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     const decisions = document.createElement("div"); decisions.className = "merge-decisions";
     const status = document.createElement("div"); status.className = "operation-status"; status.setAttribute("aria-live", "polite");
     const commit = button("确认并提交合并", async () => {
+      if (!isCurrent()) return;
       const token = crypto.randomUUID().replaceAll("-", "");
       commit.disabled = true; status.textContent = "正在验证输入并提交新版本…";
       try {
@@ -408,13 +431,15 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
           method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `merge-${token}` },
           body: JSON.stringify({ operation_id: `op_merge_${token}`, idempotency_key: `merge-${token}`, workspace_id: workspaceId }),
         });
+        if (!isCurrent()) return;
         if (operation.status !== "committed") throw new Error(operation.error_code || `operation ${operation.status}`);
         status.textContent = "合并已提交：只在目标分支新增一个已确认版本。";
-        await renderVersionMap(workspaceId, activeResumeId);
-      } catch (error) { status.textContent = `合并提交失败：${error.message}`; commit.disabled = false; }
+        await renderVersionMap(workspaceId, activeResumeId, { isCurrent });
+      } catch (error) { if (isCurrent()) { status.textContent = `合并提交失败：${error.message}`; commit.disabled = false; } }
     }, "primary-action");
 
     const refresh = () => {
+      if (!isCurrent()) return;
       summary.textContent = `状态：${proposal.status} · revision ${proposal.revision}`;
       decisions.replaceChildren();
       for (const item of proposal.decisions || []) {
@@ -422,13 +447,16 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
         const label = document.createElement("strong"); label.textContent = item.block_id;
         const current = document.createElement("span"); current.textContent = `当前决策：${item.decision}`;
         const decide = async (decision, manualContent = null) => {
+          if (!isCurrent()) return;
           try {
-            proposal = await request(`/v1/workbench/merge-proposals/${encodeURIComponent(proposal.proposal_id)}`, {
+            const updatedProposal = await request(`/v1/workbench/merge-proposals/${encodeURIComponent(proposal.proposal_id)}`, {
               method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": String(proposal.revision) },
               body: JSON.stringify({ block_id: item.block_id, decision, expected_revision: proposal.revision, manual_content: manualContent }),
             });
+            if (!isCurrent()) return;
+            proposal = updatedProposal;
             status.textContent = "决策已保存，尚未改变目标分支。"; refresh();
-          } catch (error) { status.textContent = error.status === 409 ? "方案已变化，请重新载入后再决定。" : `决策失败：${error.message}`; }
+          } catch (error) { if (isCurrent()) status.textContent = error.status === 409 ? "方案已变化，请重新载入后再决定。" : `决策失败：${error.message}`; }
         };
         const actions = document.createElement("div"); actions.className = "merge-decision-actions";
         actions.append(
@@ -440,11 +468,12 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
       }
       commit.disabled = proposal.status !== "ready";
     };
-    panel.append(title, summary, decisions, commit, status, button("返回版本地图", () => renderVersionMap(workspaceId, activeResumeId)));
+    panel.append(title, summary, decisions, commit, status, button("返回版本地图", () => renderVersionMap(workspaceId, activeResumeId, { isCurrent })));
     elements.main.replaceChildren(panel); refresh();
   }
 
-  function renderResumeList(home, route, workspaceId) {
+  function renderResumeList(home, route, workspaceId, { isCurrent = () => true } = {}) {
+    if (!isCurrent()) return;
     const profileName = document.querySelector("#workbenchProfileName");
     const profileCaption = document.querySelector("#workbenchProfileCaption");
     const reupload = document.querySelector("#workbenchResumeReupload");
@@ -464,9 +493,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     if (profileName) profileName.textContent = home.recent_versions[0].label;
     if (profileCaption) profileCaption.textContent = `${home.recent_versions.length} 个档案版本`;
     void request(`/v1/workbench/resume-versions/${encodeURIComponent(home.recent_versions[0].version_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`)
-      .then(content => updateProfileMetrics(content.markdown, content.profile))
-      .catch(() => updateProfileMetrics(""));
-    if (route === "version-map") renderVersionMap(workspaceId, home.recent_versions[0].resume_id);
+      .then(content => { if (isCurrent()) updateProfileMetrics(content.markdown, content.profile); })
+      .catch(() => { if (isCurrent()) updateProfileMetrics(""); });
+    if (route === "version-map") return renderVersionMap(workspaceId, home.recent_versions[0].resume_id, { isCurrent });
   }
 
   return Object.freeze({ renderImport, renderResumeList, renderResumePreview, renderVersionMap });

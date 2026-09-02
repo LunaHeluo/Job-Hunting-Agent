@@ -9,301 +9,12 @@
   <link rel="stylesheet" href="./styles/app.css?v=20260823-workbench-polish">
 </head>
 <body>
-  <main class="app">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="brand">
-          <h2 class="brand-title">Starter Agent</h2>
-          <p class="brand-subtitle">本地会话</p>
-        </div>
-        <div class="sidebar-header-actions">
-          <button id="settingsButton" class="sidebar-settings-button" type="button" title="设置">
-            <span aria-hidden="true">⚙</span>
-            <span>设置</span>
-          </button>
-          <button id="newSessionButton" type="button" title="新建会话">新建</button>
-        </div>
-      </div>
-      <nav class="primary-nav" aria-label="主导航">
-        <button id="workbenchNavButton" type="button">简历工作台</button>
-        <button id="versionMapNavButton" type="button">版本地图</button>
-        <button id="chatNavButton" type="button" aria-current="page">对话</button>
-      </nav>
-      <div class="sidebar-clear-row">
-        <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">
-          清除全部
-        </button>
-      </div>
-      <div id="sessionList" class="session-list">
-        <div class="session-empty">正在加载会话...</div>
-      </div>
-    </aside>
+  <main id="appShell" class="app-shell">
 
-    <section id="chatView" class="main">
-      <header class="topbar">
-        <div>
-          <h1>求职 Agent 对话</h1>
-          <div id="status" class="status">准备连接本地 API</div>
-          <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
-        </div>
-        <div class="settings">
-          <div class="field">
-            <label for="apiBase">API</label>
-            <input id="apiBase" value="http://127.0.0.1:8000">
-          </div>
-          <div class="field">
-            <label for="providerSelect">Provider</label>
-            <select id="providerSelect">
-              <option value="">使用后端默认</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="modelSelect">Model</label>
-            <select id="modelSelect">
-              <option value="">使用后端默认</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="chatKnowledgeMode">知识库问答</label>
-            <select id="chatKnowledgeMode">
-              <option value="auto" selected>自动</option>
-              <option value="off">关闭</option>
-            </select>
-          </div>
-        </div>
-      </header>
-
-      <div id="chatDock">
-        <div id="messages" class="messages" aria-live="polite"></div>
-        <div
-          id="chatConfirmationCards"
-          class="chat-confirmation-cards"
-          aria-live="polite"
-        ></div>
-        <div id="delegationTaskCards" class="delegation-task-cards" aria-live="polite"></div>
-        <section id="delegationRunDetail" class="delegation-run-detail" hidden aria-live="polite"></section>
-
-        <footer class="composer-wrap">
-          <div id="toolMenu" class="tool-menu" hidden></div>
-          <form id="composer" class="composer">
-            <textarea id="messageInput" placeholder="输入消息，Enter 发送" rows="2"></textarea>
-            <button id="clearButton" type="button">清空</button>
-            <button id="sendButton" class="send" type="submit">发送</button>
-          </form>
-          <div class="composer-note">Shift + Enter 换行</div>
-        </footer>
-      </div>
-    </section>
-
-    <section id="knowledgeView" class="knowledge-view" hidden>
-      <div class="knowledge-layout">
-        <section class="knowledge-card knowledge-upload-card">
-          <h1>个人知识库</h1>
-          <p class="knowledge-warning">不要上传身份证、未授权公司资料、API Key、邮箱密码或授权码。</p>
-          <form id="knowledgeUploadForm" class="knowledge-form">
-            <label>Markdown 文件
-              <input id="knowledgeFile" type="file" accept=".md,.markdown" required>
-            </label>
-            <label>资料类型
-              <select id="knowledgeDocumentType">
-                <option value="resume">简历</option>
-                <option value="job_description">岗位 JD</option>
-                <option value="interview_notes">面试准备</option>
-                <option value="company_research">公司调研</option>
-                <option value="communication_summary">沟通摘要</option>
-                <option value="other">其他</option>
-              </select>
-            </label>
-            <label>
-              <input id="knowledgeAuthorized" type="checkbox" required>
-              我确认资料属于本人或已获得上传与索引授权
-            </label>
-            <button id="knowledgeUploadButton" type="submit">上传并入库</button>
-          </form>
-          <div id="knowledgeStatus" class="knowledge-status" aria-live="polite">尚未加载知识库</div>
-        </section>
-        <section class="knowledge-card knowledge-library-panel">
-          <header class="knowledge-library-header">
-            <h2>文档</h2>
-            <span id="knowledgeDocumentCount" class="knowledge-meta"></span>
-          </header>
-          <div class="knowledge-browser">
-            <section class="knowledge-document-pane" aria-label="知识库文档">
-              <div class="knowledge-document-toolbar">
-                <label class="knowledge-select-all">
-                  <input id="knowledgeSelectAllDocuments" type="checkbox">
-                  全选
-                </label>
-                <button id="knowledgeDeleteSelectedButton" class="knowledge-delete-selected" type="button" disabled>删除选中</button>
-              </div>
-              <div id="knowledgeDocumentList"></div>
-            </section>
-            <section class="knowledge-chunk-pane" aria-labelledby="knowledgeChunkTitle">
-              <h3 id="knowledgeChunkTitle">Chunk 预览</h3>
-              <div id="knowledgeChunkPreview" class="knowledge-chunk-empty">选择文档查看 Chunk</div>
-            </section>
-          </div>
-        </section>
-      </div>
-    </section>
-
-    <section id="capabilitiesView" class="capability-view" hidden>
-      <div class="capability-shell">
-        <header class="capability-header">
-          <div>
-            <h1>能力管理</h1>
-            <div id="capabilityRefreshTime" class="capability-refresh-time">
-              尚未刷新
-            </div>
-          </div>
-          <div class="capability-toolbar">
-            <button id="capabilityRefreshButton" type="button">刷新当前页</button>
-          </div>
-        </header>
-        <nav class="capability-tabs" role="tablist" aria-label="能力类型">
-          <button
-            id="capabilityServersTab"
-            type="button"
-            role="tab"
-            aria-selected="true"
-            aria-controls="capabilityList"
-          >MCP Servers</button>
-          <button
-            id="capabilitySkillsTab"
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-controls="capabilityDetail"
-          >Skills</button>
-        </nav>
-        <div
-          id="capabilityGlobalError"
-          class="capability-error"
-          role="alert"
-          aria-live="assertive"
-          hidden
-        ></div>
-        <div
-          id="capabilityConfirmation"
-          class="capability-confirmation"
-          aria-live="polite"
-          hidden
-        ></div>
-        <div class="capability-layout">
-          <aside
-            id="capabilityList"
-            class="capability-panel capability-list"
-            aria-label="能力列表"
-          ></aside>
-          <section
-            id="capabilityDetail"
-            class="capability-panel"
-            aria-label="能力详情"
-            tabindex="-1"
-          ></section>
-        </div>
-      </div>
-    </section>
-
-    <section id="trustView" class="capability-view" hidden>
-      <div class="capability-shell">
-        <header class="capability-header">
-          <div>
-            <h1>Trust Center</h1>
-            <div id="trustStatus" class="capability-refresh-time" aria-live="polite">
-              连接真实后端后显示评测、Trace 与 Safety 状态
-            </div>
-          </div>
-          <div class="capability-toolbar">
-            <button id="trustRefreshButton" type="button">刷新当前页</button>
-          </div>
-        </header>
-        <nav class="capability-tabs" role="tablist" aria-label="Trust Center">
-          <button
-            id="trustEvalsTab"
-            type="button"
-            role="tab"
-            aria-selected="true"
-            aria-controls="trustEvalsPanel"
-          >Evals</button>
-          <button
-            id="trustTracesTab"
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-controls="trustTracesPanel"
-          >Traces</button>
-          <button
-            id="trustSafetyTab"
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-controls="trustSafetyPanel"
-          >Safety</button>
-        </nav>
-        <div id="trustError" class="capability-error" role="alert" aria-live="assertive" hidden></div>
-
-        <section id="trustEvalsPanel" class="capability-panel" aria-labelledby="trustEvalsTab">
-          <div class="capability-section-title">
-            <h2>固定 Fixture Eval</h2>
-            <button id="trustStartRunButton" type="button">运行固定评测</button>
-          </div>
-          <div class="capability-grid">
-            <label>Suite
-              <select id="trustSuiteSelect"></select>
-            </label>
-            <label>基线 Run
-              <select id="trustCompareBaseRun"></select>
-            </label>
-            <label>对比 Run
-              <select id="trustCompareCandidateRun"></select>
-            </label>
-          </div>
-          <div id="trustEvalRuns" class="capability-list" aria-label="Eval Runs"></div>
-          <div id="trustEvalCases" class="capability-panel" aria-label="Eval Cases"></div>
-          <div id="trustFailureClusters" class="capability-panel" aria-label="失败簇"></div>
-        </section>
-
-        <section id="trustTracesPanel" class="capability-panel" aria-labelledby="trustTracesTab" hidden>
-          <div class="capability-section-title">
-            <h2>Trace 链路</h2>
-            <button id="trustTraceSearchButton" type="button">筛选</button>
-          </div>
-          <div class="capability-grid">
-            <label>Run
-              <input id="trustTraceRunFilter" placeholder="eval_run_id">
-            </label>
-            <label>Case
-              <input id="trustTraceCaseFilter" placeholder="case_id">
-            </label>
-            <label>Session
-              <input id="trustTraceSessionFilter" placeholder="session_id">
-            </label>
-            <label>Turn
-              <input id="trustTraceTurnFilter" placeholder="turn_id">
-            </label>
-            <label>Tool
-              <input id="trustTraceToolFilter" placeholder="tool_call_id">
-            </label>
-          </div>
-          <div id="trustTraceEvents" class="capability-list" aria-label="Trace Events"></div>
-        </section>
-
-        <section id="trustSafetyPanel" class="capability-panel" aria-labelledby="trustSafetyTab" hidden>
-          <div class="capability-section-title">
-            <h2>Safety Gate</h2>
-            <span id="trustSafetyGate" class="capability-pill">未知</span>
-          </div>
-          <div id="trustSafetyPolicy" class="capability-panel"></div>
-          <div id="trustSafetyEvidence" class="capability-list" aria-label="Safety Evidence"></div>
-        </section>
-      </div>
-    </section>
-
-    <section id="workbenchView" class="workbench-view" hidden aria-labelledby="workbenchTitle">
+    <section id="workbenchView" class="workbench-view" aria-labelledby="workbenchTitle">
       <header class="workbench-topbar">
         <div class="workbench-brand"><strong>Resume Agent</strong></div>
-        <nav class="workbench-primary-tabs" aria-label="简历工作台导航">
+        <nav id="primaryNavigation" class="workbench-primary-tabs" aria-label="主导航">
           <button id="workbenchPageTab" type="button" aria-current="page">工作台</button>
           <button id="versionMapPageTab" type="button">版本地图</button>
           <button id="applicationsPageTab" type="button">投递看板</button>
@@ -320,7 +31,7 @@
       </nav>
       <div class="workbench-layout">
         <aside class="workbench-left" aria-label="简历档案与 Agent">
-          <section class="workbench-card workbench-profile-card">
+          <section class="workbench-card workbench-profile-card" aria-label="简历档案">
             <div class="workbench-profile-identity">
               <strong id="workbenchProfileName">我的档案</strong>
               <span id="workbenchProfileCaption">尚未导入简历</span>
@@ -333,8 +44,9 @@
               <span><strong id="workbenchSkillCount">—</strong> 技能</span>
             </div>
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传新档案</button></div>
+            <div id="sessionList" class="session-list"><div class="session-empty">正在加载会话...</div></div>
           </section>
-          <section class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
+          <section id="workbenchAgentCard" class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
             <div class="workbench-section-heading workbench-agent-heading">
               <h2 id="workbenchAgentTitle">Starter Agent</h2>
               <div class="workbench-agent-heading-actions">
@@ -342,7 +54,21 @@
                 <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
               </div>
             </div>
-            <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话"></div>
+            <div id="workbenchAgentConversationActions" class="workbench-agent-conversation-actions" aria-label="对话管理">
+              <button id="newSessionButton" type="button" title="新建会话">新建</button>
+              <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
+            </div>
+            <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话">
+              <div id="status" class="status">准备连接本地 API</div>
+              <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
+              <div id="chatDock">
+                <div id="messages" class="messages" aria-live="polite"></div>
+                <div id="chatConfirmationCards" class="chat-confirmation-cards" aria-live="polite"></div>
+                <div id="delegationTaskCards" class="delegation-task-cards" aria-live="polite"></div>
+                <section id="delegationRunDetail" class="delegation-run-detail" hidden aria-live="polite"></section>
+                <footer class="composer-wrap"><div id="toolMenu" class="tool-menu" hidden></div><form id="composer" class="composer"><textarea id="messageInput" placeholder="输入消息，Enter 发送" rows="2"></textarea><button id="clearButton" type="button">清空</button><button id="sendButton" class="send" type="submit">发送</button></form><div class="composer-note">Shift + Enter 换行</div></footer>
+              </div>
+            </div>
             <div id="workbenchAgentSuggestions" class="workbench-agent-suggestions">
               <span class="workbench-agent-suggestions-label">你可以试试</span>
               <div id="workbenchAgentActions" class="workbench-agent-actions">
@@ -367,7 +93,7 @@
             </details>
           </section>
         </aside>
-        <main class="workbench-main" aria-labelledby="workbenchTitle">
+        <main id="workspaceCanvas" class="workbench-main" aria-labelledby="workbenchTitle">
           <section class="workbench-card workbench-canvas">
             <section id="workbenchStageCallout" class="workbench-stage-callout" aria-live="polite">
               <div>
@@ -384,21 +110,243 @@
               <button id="workbenchArchiveTab" type="button" aria-current="page">档案</button>
               <button id="workbenchMatchTab" type="button">岗位匹配</button>
             </nav>
-            <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
-            <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
-            <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+            <div class="workspace-scroll-region" data-scroll-key="center">
+              <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
+              <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
+              <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+            </div>
+            <footer id="workbenchActionBar" class="workbench-action-bar" aria-live="polite">
+              <span id="workbenchActionStatus">选择当前任务后显示可用操作</span>
+              <div id="workbenchActionControls"></div>
+            </footer>
           </section>
         </main>
-        <aside id="workbenchCandidateRail" class="workbench-right" aria-label="岗位候选">
-          <section class="workbench-card">
-            <div class="workbench-section-heading"><h2>岗位候选</h2><span id="workbenchJobCount">—</span></div>
-            <p class="workbench-helper">确认后的 JD 可在这里快速查看，并进入完整匹配分析。</p>
-            <div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div>
+        <aside id="contextRail" class="workbench-right">
+          <section id="workbenchCandidateRail" class="workbench-card workbench-context-card">
+            <div class="workbench-section-heading"><h2 id="workbenchContextTitle">岗位候选</h2><span id="workbenchContextMeta"><span id="workbenchJobCount">—</span></span></div>
+            <p id="workbenchContextDescription" class="workbench-helper">确认后的 JD 可在这里快速查看，并进入完整匹配分析。</p>
+            <div id="workbenchContextContent" class="context-scroll-region"><div id="workbenchJobList" class="workbench-empty">暂无已确认岗位。</div></div>
           </section>
         </aside>
       </div>
     </section>
   </main>
+
+  <div id="advancedOverlay" class="advanced-overlay" hidden>
+    <section id="advancedDialog" class="advanced-dialog" role="dialog" aria-modal="true" aria-labelledby="advancedTitle">
+      <header class="advanced-dialog-header">
+        <h2 id="advancedTitle"></h2>
+        <button id="advancedCloseButton" type="button" aria-label="关闭窗口">×</button>
+      </header>
+      <div class="advanced-dialog-body">
+  <section id="knowledgeView" class="knowledge-view" hidden>
+    <div class="knowledge-layout">
+      <section class="knowledge-card knowledge-upload-card">
+        <h1>个人知识库</h1>
+        <p class="knowledge-warning">不要上传身份证、未授权公司资料、API Key、邮箱密码或授权码。</p>
+        <form id="knowledgeUploadForm" class="knowledge-form">
+          <label>Markdown 文件
+            <input id="knowledgeFile" type="file" accept=".md,.markdown" required>
+          </label>
+          <label>资料类型
+            <select id="knowledgeDocumentType">
+              <option value="resume">简历</option>
+              <option value="job_description">岗位 JD</option>
+              <option value="interview_notes">面试准备</option>
+              <option value="company_research">公司调研</option>
+              <option value="communication_summary">沟通摘要</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+          <label>
+            <input id="knowledgeAuthorized" type="checkbox" required>
+            我确认资料属于本人或已获得上传与索引授权
+          </label>
+          <button id="knowledgeUploadButton" type="submit">上传并入库</button>
+        </form>
+        <div id="knowledgeStatus" class="knowledge-status" aria-live="polite">尚未加载知识库</div>
+      </section>
+      <section class="knowledge-card knowledge-library-panel">
+        <header class="knowledge-library-header">
+          <h2>文档</h2>
+          <span id="knowledgeDocumentCount" class="knowledge-meta"></span>
+        </header>
+        <div class="knowledge-browser">
+          <section class="knowledge-document-pane" aria-label="知识库文档">
+            <div class="knowledge-document-toolbar">
+              <label class="knowledge-select-all">
+                <input id="knowledgeSelectAllDocuments" type="checkbox">
+                全选
+              </label>
+              <button id="knowledgeDeleteSelectedButton" class="knowledge-delete-selected" type="button" disabled>删除选中</button>
+            </div>
+            <div id="knowledgeDocumentList"></div>
+          </section>
+          <section class="knowledge-chunk-pane" aria-labelledby="knowledgeChunkTitle">
+            <h3 id="knowledgeChunkTitle">Chunk 预览</h3>
+            <div id="knowledgeChunkPreview" class="knowledge-chunk-empty">选择文档查看 Chunk</div>
+          </section>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section id="capabilitiesView" class="capability-view" hidden>
+    <div class="capability-shell">
+      <header class="capability-header">
+        <div>
+          <h1>能力管理</h1>
+          <div id="capabilityRefreshTime" class="capability-refresh-time">
+            尚未刷新
+          </div>
+        </div>
+        <div class="capability-toolbar">
+          <button id="capabilityRefreshButton" type="button">刷新当前页</button>
+        </div>
+      </header>
+      <nav class="capability-tabs" role="tablist" aria-label="能力类型">
+        <button
+          id="capabilityServersTab"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="capabilityList"
+        >MCP Servers</button>
+        <button
+          id="capabilitySkillsTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="capabilityDetail"
+        >Skills</button>
+      </nav>
+      <div
+        id="capabilityGlobalError"
+        class="capability-error"
+        role="alert"
+        aria-live="assertive"
+        hidden
+      ></div>
+      <div
+        id="capabilityConfirmation"
+        class="capability-confirmation"
+        aria-live="polite"
+        hidden
+      ></div>
+      <div class="capability-layout">
+        <aside
+          id="capabilityList"
+          class="capability-panel capability-list"
+          aria-label="能力列表"
+        ></aside>
+        <section
+          id="capabilityDetail"
+          class="capability-panel"
+          aria-label="能力详情"
+          tabindex="-1"
+        ></section>
+      </div>
+    </div>
+  </section>
+
+  <section id="trustView" class="capability-view" hidden>
+    <div class="capability-shell">
+      <header class="capability-header">
+        <div>
+          <h1>Trust Center</h1>
+          <div id="trustStatus" class="capability-refresh-time" aria-live="polite">
+            连接真实后端后显示评测、Trace 与 Safety 状态
+          </div>
+        </div>
+        <div class="capability-toolbar">
+          <button id="trustRefreshButton" type="button">刷新当前页</button>
+        </div>
+      </header>
+      <nav class="capability-tabs" role="tablist" aria-label="Trust Center">
+        <button
+          id="trustEvalsTab"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="trustEvalsPanel"
+        >Evals</button>
+        <button
+          id="trustTracesTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="trustTracesPanel"
+        >Traces</button>
+        <button
+          id="trustSafetyTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="trustSafetyPanel"
+        >Safety</button>
+      </nav>
+      <div id="trustError" class="capability-error" role="alert" aria-live="assertive" hidden></div>
+
+      <section id="trustEvalsPanel" class="capability-panel" aria-labelledby="trustEvalsTab">
+        <div class="capability-section-title">
+          <h2>固定 Fixture Eval</h2>
+          <button id="trustStartRunButton" type="button">运行固定评测</button>
+        </div>
+        <div class="capability-grid">
+          <label>Suite
+            <select id="trustSuiteSelect"></select>
+          </label>
+          <label>基线 Run
+            <select id="trustCompareBaseRun"></select>
+          </label>
+          <label>对比 Run
+            <select id="trustCompareCandidateRun"></select>
+          </label>
+        </div>
+        <div id="trustEvalRuns" class="capability-list" aria-label="Eval Runs"></div>
+        <div id="trustEvalCases" class="capability-panel" aria-label="Eval Cases"></div>
+        <div id="trustFailureClusters" class="capability-panel" aria-label="失败簇"></div>
+      </section>
+
+      <section id="trustTracesPanel" class="capability-panel" aria-labelledby="trustTracesTab" hidden>
+        <div class="capability-section-title">
+          <h2>Trace 链路</h2>
+          <button id="trustTraceSearchButton" type="button">筛选</button>
+        </div>
+        <div class="capability-grid">
+          <label>Run
+            <input id="trustTraceRunFilter" placeholder="eval_run_id">
+          </label>
+          <label>Case
+            <input id="trustTraceCaseFilter" placeholder="case_id">
+          </label>
+          <label>Session
+            <input id="trustTraceSessionFilter" placeholder="session_id">
+          </label>
+          <label>Turn
+            <input id="trustTraceTurnFilter" placeholder="turn_id">
+          </label>
+          <label>Tool
+            <input id="trustTraceToolFilter" placeholder="tool_call_id">
+          </label>
+        </div>
+        <div id="trustTraceEvents" class="capability-list" aria-label="Trace Events"></div>
+      </section>
+
+      <section id="trustSafetyPanel" class="capability-panel" aria-labelledby="trustSafetyTab" hidden>
+        <div class="capability-section-title">
+          <h2>Safety Gate</h2>
+          <span id="trustSafetyGate" class="capability-pill">未知</span>
+        </div>
+        <div id="trustSafetyPolicy" class="capability-panel"></div>
+        <div id="trustSafetyEvidence" class="capability-list" aria-label="Safety Evidence"></div>
+      </section>
+    </div>
+  </section>
+
+      </div>
+    </section>
+  </div>
 
   <div id="settingsOverlay" class="settings-overlay" hidden>
     <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
@@ -407,6 +355,13 @@
         <button id="settingsCloseButton" class="settings-close" type="button" aria-label="关闭设置">×</button>
       </div>
       <div class="settings-dialog-body">
+        <section class="settings connection-settings" aria-labelledby="connectionSettingsTitle">
+          <h3 id="connectionSettingsTitle">Agent 连接</h3>
+          <div class="field"><label for="apiBase">API</label><input id="apiBase" value="http://127.0.0.1:8000"></div>
+          <div class="field"><label for="providerSelect">Provider</label><select id="providerSelect"><option value="">使用后端默认</option></select></div>
+          <div class="field"><label for="modelSelect">Model</label><select id="modelSelect"><option value="">使用后端默认</option></select></div>
+          <div class="field"><label for="chatKnowledgeMode">知识库问答</label><select id="chatKnowledgeMode"><option value="auto" selected>自动</option><option value="off">关闭</option></select></div>
+        </section>
         <nav class="advanced-settings-nav" aria-label="高级功能">
           <h3>高级功能</h3>
           <p class="setting-description">这些功能保留原有路由和后端策略，但不占用日常简历工作台的主导航。</p>

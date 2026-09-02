@@ -3,6 +3,7 @@ from pathlib import Path
 
 def test_frontend_displays_real_mock_and_budget_token_states() -> None:
     web = Path(__file__).resolve().parents[2]  / "frontend" / "web"
+    index = (web / "index.html").read_text(encoding="utf-8")
     # The UI was split into HTML, JS and CSS modules; contracts span that bundle.
     html = "\n".join(
         path.read_text(encoding="utf-8")
@@ -19,7 +20,10 @@ def test_frontend_displays_real_mock_and_budget_token_states() -> None:
     assert "summary前 tokens=${trace.before_tokens}" in html
     assert "summary后 tokens=${trace.after_tokens}" in html
     assert "summary_id=${trace.summary_id}" in html
-    assert 'id="settingsButton"' in html
+    assert 'id="settingsButton"' not in index
+    assert index.count('id="workbenchSettingsButton"') == 1
+    for setting_id in ("apiBase", "providerSelect", "modelSelect", "chatKnowledgeMode"):
+        assert index.index('id="settingsOverlay"') < index.index(f'id="{setting_id}"')
     assert 'id="toolGovernanceToggle"' in html
     assert "tool_governance_enabled = state.toolGovernanceEnabled" in html
     assert 'localStorage.getItem(TOOL_GOVERNANCE_STORAGE_KEY) !== "false"' in html
@@ -37,7 +41,8 @@ def test_frontend_displays_real_mock_and_budget_token_states() -> None:
     assert "await sendMessage(continuation.next_message)" in html
     assert "appendHistoricalTool(rendered, message)" in html
     assert 'id="clearAllSessionsButton"' in html
-    assert html.index('id="clearAllSessionsButton"') < html.index('id="sessionList"')
+    assert index.index('id="workbenchAgentCard"') < index.index('id="clearAllSessionsButton"')
+    assert index.index('id="workbenchAgentConversationActions"') < index.index('id="clearAllSessionsButton"')
     assert "clearAllSessionsButton.addEventListener" in html
     assert "loadSessions(false)" in html
     assert "sessionListEl.scrollHeight" in html

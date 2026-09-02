@@ -15,9 +15,48 @@ def test_advanced_platform_features_are_available_from_settings() -> None:
     for element_id in ("knowledgeNavButton", "capabilitiesNavButton", "trustNavButton"):
         assert f'id="{element_id}"' in settings
         assert HTML.count(f'id="{element_id}"') == 1
-    assert '#/knowledge' in APP
-    assert '#/capabilities/mcp-servers' in APP
-    assert '#/trust/evals' in APP
+    for call in (
+        'openAdvancedWindow("knowledge", settingsReturnFocus)',
+        'openAdvancedWindow("capabilities", settingsReturnFocus)',
+        'openAdvancedWindow("trust", settingsReturnFocus)',
+    ):
+        assert call in APP
+    for legacy_hash in ("#/knowledge", "#/capabilities/", "#/trust/"):
+        assert legacy_hash not in APP
+
+
+def test_k1_window_keeps_advanced_results_owned_by_the_open_overlay() -> None:
+    """Closing or replacing K1 must prevent late advanced responses from redrawing it."""
+    for contract in (
+        ".advanced-overlay",
+        ".advanced-dialog",
+        "width: min(88vw, 1600px)",
+        "height: min(88dvh, 960px)",
+        "grid-template-rows: auto minmax(0, 1fr)",
+        ".advanced-dialog-body",
+        "overflow: auto",
+        "body.modal-open",
+    ):
+        assert contract in CSS
+    for loader in (
+        "loadKnowledgeBase",
+        "loadCapabilityServers",
+        "loadCapabilitySkills",
+        "loadTrustEvals",
+        "loadTrustTraces",
+        "loadTrustSafety",
+    ):
+        assert f"async function {loader}(overlayToken = shellState.captureOverlayRequest())" in APP
+    assert "shellState.isOverlayRequestCurrent(overlayToken)" in APP
+    assert "height: clamp(480px, calc(100vh - 170px), 820px)" not in CSS
+    assert ".advanced-dialog-body .capability-view {\n      min-width: 0;\n      height: 100vh" not in CSS
+    for action in (
+        "loadKnowledgeChunks(item, overlayToken = shellState.captureOverlayRequest())",
+        "startTrustEvalRun(overlayToken = shellState.captureOverlayRequest())",
+        "loadCapabilityConfirmations(overlayToken = shellState.captureOverlayRequest())",
+        "refreshCapabilityAuthorityForConfirmation(confirmation, overlayToken = shellState.captureOverlayRequest())",
+    ):
+        assert f"async function {action}" in APP
 
 
 def test_dialog_keyboard_and_motion_accessibility_contracts() -> None:

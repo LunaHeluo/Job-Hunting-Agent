@@ -5,12 +5,13 @@ WEB = Path("frontend/web")
 HTML = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "index.html", *sorted(WEB.rglob("*.css")), *sorted(WEB.rglob("*.js"))))
 
 
-def test_capability_navigation_routes_and_shared_layout_exist() -> None:
+def test_capability_navigation_is_modal_local_and_has_shared_layout() -> None:
     for contract in (
         'id="capabilitiesNavButton"',
         'id="capabilitiesView"',
-        "#/capabilities/mcp-servers",
-        "#/capabilities/skills",
+        'openAdvancedWindow("capabilities", settingsReturnFocus)',
+        "function setCapabilityRoute(route)",
+        'advancedWindow.activeType() === "capabilities"',
         'id="capabilityServersTab"',
         'id="capabilitySkillsTab"',
         'id="capabilityRefreshTime"',
@@ -83,7 +84,7 @@ def test_capability_layout_is_keyboard_and_narrow_screen_accessible() -> None:
 def test_server_tools_use_a_bounded_responsive_scroll_region() -> None:
     for contract in (
         ".capability-tools-list {",
-        "max-height: min(52vh, 560px);",
+        "max-height: 560px;",
         "overflow-y: auto;",
         "overscroll-behavior: contain;",
         "scrollbar-gutter: stable;",

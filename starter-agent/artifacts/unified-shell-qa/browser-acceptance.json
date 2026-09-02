@@ -1,0 +1,277 @@
+{
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+  "geometry": [
+    {
+      "viewport": "1280x800",
+      "left": {
+        "top": 64,
+        "bottom": 758,
+        "height": 694
+      },
+      "canvas": {
+        "top": 64,
+        "bottom": 758,
+        "height": 694
+      },
+      "context": {
+        "top": 64,
+        "bottom": 758,
+        "height": 694
+      },
+      "maxTopDelta": 0,
+      "maxBottomDelta": 0,
+      "documentClientWidth": 1280,
+      "documentScrollWidth": 1280,
+      "bodyScrollWidth": 1280,
+      "horizontalOverflow": false,
+      "composer": {
+        "top": 580,
+        "bottom": 652,
+        "height": 72,
+        "width": 236,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "input": {
+        "top": 580,
+        "bottom": 652,
+        "height": 72,
+        "width": 157,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "send": {
+        "top": 616,
+        "bottom": 652,
+        "height": 36,
+        "width": 72,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "typedValue": "Edge 1280 composer input"
+    },
+    {
+      "viewport": "1440x900",
+      "left": {
+        "top": 64,
+        "bottom": 858,
+        "height": 794
+      },
+      "canvas": {
+        "top": 64,
+        "bottom": 858,
+        "height": 794
+      },
+      "context": {
+        "top": 64,
+        "bottom": 858,
+        "height": 794
+      },
+      "maxTopDelta": 0,
+      "maxBottomDelta": 0,
+      "documentClientWidth": 1440,
+      "documentScrollWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "horizontalOverflow": false,
+      "composer": {
+        "top": 644,
+        "bottom": 716,
+        "height": 72,
+        "width": 236,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "input": {
+        "top": 644,
+        "bottom": 716,
+        "height": 72,
+        "width": 157,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "send": {
+        "top": 680,
+        "bottom": 716,
+        "height": 36,
+        "width": 72,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "typedValue": "Edge 1440 composer input"
+    },
+    {
+      "viewport": "1920x1080",
+      "left": {
+        "top": 64,
+        "bottom": 1038,
+        "height": 974
+      },
+      "canvas": {
+        "top": 64,
+        "bottom": 1038,
+        "height": 974
+      },
+      "context": {
+        "top": 64,
+        "bottom": 1038,
+        "height": 974
+      },
+      "maxTopDelta": 0,
+      "maxBottomDelta": 0,
+      "documentClientWidth": 1920,
+      "documentScrollWidth": 1920,
+      "bodyScrollWidth": 1920,
+      "horizontalOverflow": false,
+      "composer": {
+        "top": 824,
+        "bottom": 896,
+        "height": 72,
+        "width": 296,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "input": {
+        "top": 824,
+        "bottom": 896,
+        "height": 72,
+        "width": 217,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "send": {
+        "top": 860,
+        "bottom": 896,
+        "height": 36,
+        "width": 72,
+        "withinViewport": true,
+        "visible": true,
+        "hitTarget": true
+      },
+      "typedValue": ""
+    }
+  ],
+  "safeFlow": {
+    "viewport": "1024x768",
+    "gridTemplateColumns": "969px",
+    "bodyOverflow": "auto",
+    "columnTops": {
+      "left": 64,
+      "canvas": 769,
+      "context": 1291
+    },
+    "sequentialTopOrder": true,
+    "maxColumnWidth": 969,
+    "documentClientWidth": 1009,
+    "documentScrollWidth": 1009,
+    "horizontalOverflow": false
+  },
+  "interaction": {
+    "initialState": {
+      "input": "Task 7 draft stays with the Agent",
+      "typedDraft": "Task 7 draft stays with the Agent",
+      "agentScroll": 86,
+      "centerScroll": 88,
+      "contextScroll": 64,
+      "selectionContext": "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。",
+      "selectedItemPresent": false
+    },
+    "restoredState": {
+      "input": "Task 7 draft stays with the Agent",
+      "agentScroll": 86,
+      "centerScroll": 88,
+      "contextScroll": 64,
+      "selectionContext": "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。",
+      "route": "#/workbench"
+    },
+    "agentInputPreserved": true,
+    "agentScrollPreserved": true,
+    "centerScrollRestored": true,
+    "contextScrollRestored": true,
+    "selectionContextStable": true,
+    "routeEmptyContexts": {
+      "versionMap": "版本详情",
+      "applications": "投递详情"
+    },
+    "k1Results": [
+      {
+        "type": "knowledge",
+        "trigger": "#knowledgeNavButton",
+        "title": "个人知识库",
+        "settingsFocus": true,
+        "opened": {
+          "panelVisible": true,
+          "primaryHashUnchanged": true,
+          "activeInside": true,
+          "activeId": "advancedCloseButton"
+        },
+        "closed": {
+          "overlayHidden": true,
+          "focusReturned": true,
+          "primaryHashUnchanged": true
+        }
+      },
+      {
+        "type": "capabilities",
+        "trigger": "#capabilitiesNavButton",
+        "title": "模型、Tool 与 MCP",
+        "settingsFocus": true,
+        "opened": {
+          "panelVisible": true,
+          "primaryHashUnchanged": true,
+          "activeInside": true,
+          "activeId": "advancedCloseButton"
+        },
+        "closed": {
+          "overlayHidden": true,
+          "focusReturned": true,
+          "primaryHashUnchanged": true
+        }
+      },
+      {
+        "type": "trust",
+        "trigger": "#trustNavButton",
+        "title": "信任中心",
+        "settingsFocus": true,
+        "opened": {
+          "panelVisible": true,
+          "primaryHashUnchanged": true,
+          "activeInside": true,
+          "activeId": "advancedCloseButton"
+        },
+        "closed": {
+          "overlayHidden": true,
+          "focusReturned": true,
+          "primaryHashUnchanged": true
+        }
+      }
+    ],
+    "focusTrap": {
+      "outsideRecovery": {
+        "activeInside": true,
+        "activeId": "advancedCloseButton",
+        "focusVisible": true
+      },
+      "wrapFromFirst": {
+        "activeInside": true,
+        "activeId": "",
+        "didWrap": true
+      }
+    },
+    "isolatedError": {
+      "message": "Failed to fetch",
+      "errorInsideK1": true,
+      "k1Visible": true,
+      "persistentShellStillPresent": true,
+      "legacyShellAbsent": true,
+      "bodyHasHorizontalOverflow": false
+    }
+  }
+}

@@ -34,10 +34,9 @@ def test_workbench_modes_use_backend_home_without_fake_success_data() -> None:
 
 def test_workbench_visual_tokens_focus_and_breakpoints_are_explicit() -> None:
     for contract in (
-        "--wb-bg: #f7f6f2",
-        "--wb-accent: #176b4d",
+        "--wb-bg: var(--app-bg)",
+        "--wb-accent: var(--app-accent)",
         ":focus-visible",
-        "grid-template-columns: 360px minmax(640px,1fr) 300px",
         "@media (max-width: 1439px)",
         "@media (max-width: 1279px)",
         "@media (max-width: 1023px)",
@@ -48,16 +47,14 @@ def test_workbench_visual_tokens_focus_and_breakpoints_are_explicit() -> None:
 
 
 def test_workbench_routes_are_first_class_and_existing_routes_remain() -> None:
-    for route in (
-        '#/workbench',
-        '#/version-map',
-        '#/applications',
-        '#/chat',
-        '#/knowledge',
-        '#/capabilities/mcp-servers',
-        '#/trust/evals',
-    ):
+    for route in ('#/workbench', '#/version-map', '#/applications'):
         assert route in JS or route in HTML
+    assert '#/chat' not in JS
+
+
+def test_shell_state_primary_route_source_excludes_legacy_chat() -> None:
+    shell_state = (WEB / "app/shell-state.js").read_text(encoding="utf-8")
+    assert '#/chat' not in shell_state
 
 
 def test_application_board_uses_backend_timeline_and_confirmation() -> None:
@@ -69,3 +66,15 @@ def test_application_board_uses_backend_timeline_and_confirmation() -> None:
         "不会访问招聘网站",
     ):
         assert contract in JS or contract in HTML
+
+
+def test_a1_canvas_and_context_rail_have_stable_regions() -> None:
+    for contract in (
+        'id="workbenchStageCallout"', 'class="workbench-content-tabs"',
+        'id="workbenchActionBar"', 'class="workspace-scroll-region"',
+        'id="workbenchContextTitle"', 'id="workbenchContextDescription"',
+        'id="workbenchContextContent"', 'class="context-scroll-region"',
+    ):
+        assert contract in HTML
+    for contract in ("onVersionSelect", "onApplicationSelect", "rememberRouteScroll", "restoreRouteScroll"):
+        assert contract in JS

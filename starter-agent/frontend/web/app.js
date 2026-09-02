@@ -1,31 +1,15 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=20260823-workbench-polish";
 import { getWorkbenchContext } from "./app/workbench-context.js";
+import { createShellState, resolveShellRoute } from "./app/shell-state.js";
+import { createModalManager } from "./app/modal-manager.js";
+import { createTrustReadOwnership, createTrustRunControlState } from "./app/trust-request-state.js";
 window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, createStore });
 
     /* capability-ui-logic:start */
     const CapabilityUiLogic = Object.freeze({
-      resolvePrimaryRoute(hash) {
-        if (!hash && typeof window !== "undefined") {
-          const requested = new URLSearchParams(window.location.search).get("route");
-          if (requested === "workbench") return "workbench";
-          if (requested === "version-map") return "version-map";
-          if (requested === "applications") return "applications";
-        }
-        if (hash === "#/workbench") return "workbench";
-        if (hash === "#/version-map") return "version-map";
-        if (hash === "#/applications") return "applications";
-        if (hash === "#/knowledge") return "knowledge";
-        if (hash === "#/capabilities/mcp-servers") return "mcp-servers";
-        if (hash === "#/capabilities/skills") return "skills";
-        if (hash === "#/trust/evals") return "trust-evals";
-        if (hash === "#/trust/traces") return "trust-traces";
-        if (hash === "#/trust/safety") return "trust-safety";
-        return "chat";
-      },
-
       confirmationTargetKey(confirmation) {
         const summary = confirmation?.arguments_summary || {};
         const operation = String(summary.operation || confirmation?.tool_name || "");
@@ -191,6 +175,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       requestEpoch: 0,
       requestController: new AbortController()
     };
+    const trustReadOwnership = createTrustReadOwnership();
+    const trustRunControl = createTrustRunControlState();
 
     const apiBaseInput = document.querySelector("#apiBase");
     const providerSelect = document.querySelector("#providerSelect");
@@ -202,9 +188,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const chatConfirmationCards = document.querySelector("#chatConfirmationCards");
     const delegationTaskCards = document.querySelector("#delegationTaskCards");
     const delegationRunDetail = document.querySelector("#delegationRunDetail");
-    const chatDock = document.querySelector("#chatDock");
-    const workbenchChatDock = document.querySelector("#workbenchChatDock");
-    const workbenchAgentSuggestions = document.querySelector("#workbenchAgentSuggestions");
     const messageInput = document.querySelector("#messageInput");
     const sendButton = document.querySelector("#sendButton");
     const clearButton = document.querySelector("#clearButton");
@@ -213,7 +196,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const clearAllSessionsButton = document.querySelector("#clearAllSessionsButton");
     const composer = document.querySelector("#composer");
     const toolMenu = document.querySelector("#toolMenu");
-    const settingsButton = document.querySelector("#settingsButton");
     const workbenchSettingsButton = document.querySelector("#workbenchSettingsButton");
     const settingsOverlay = document.querySelector("#settingsOverlay");
     const settingsCloseButton = document.querySelector("#settingsCloseButton");
@@ -227,16 +209,12 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const memorySaveButton = document.querySelector("#memorySaveButton");
     const memoryCancelButton = document.querySelector("#memoryCancelButton");
     const memoryList = document.querySelector("#memoryList");
-    const chatView = document.querySelector("#chatView");
     const knowledgeView = document.querySelector("#knowledgeView");
     const capabilitiesView = document.querySelector("#capabilitiesView");
     const trustView = document.querySelector("#trustView");
-    const chatNavButton = document.querySelector("#chatNavButton");
     const knowledgeNavButton = document.querySelector("#knowledgeNavButton");
     const capabilitiesNavButton = document.querySelector("#capabilitiesNavButton");
     const trustNavButton = document.querySelector("#trustNavButton");
-    const workbenchNavButton = document.querySelector("#workbenchNavButton");
-    const versionMapNavButton = document.querySelector("#versionMapNavButton");
     const workbenchView = document.querySelector("#workbenchView");
     const workbenchPageTab = document.querySelector("#workbenchPageTab");
     const versionMapPageTab = document.querySelector("#versionMapPageTab");
@@ -287,6 +265,26 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     const knowledgeDocumentList = document.querySelector("#knowledgeDocumentList");
     const knowledgeChunkPreview = document.querySelector("#knowledgeChunkPreview");
     const knowledgeChunkTitle = document.querySelector("#knowledgeChunkTitle");
+    const advancedOverlay = document.querySelector("#advancedOverlay");
+    const advancedDialog = document.querySelector("#advancedDialog");
+    const advancedTitle = document.querySelector("#advancedTitle");
+    const advancedCloseButton = document.querySelector("#advancedCloseButton");
+    const requestedRoute = new URLSearchParams(window.location.search).get("route") || "";
+    const shellState = createShellState(
+      resolveShellRoute(window.location.hash, requestedRoute)
+    );
+    const advancedWindow = createModalManager({
+      overlay: advancedOverlay,
+      dialog: advancedDialog,
+      title: advancedTitle,
+      closeButton: advancedCloseButton,
+      panels: { knowledge: knowledgeView, capabilities: capabilitiesView, trust: trustView },
+      onBeforeClose(type) {
+        shellState.closeOverlay();
+        if (type === "capabilities") advanceCapabilityRequestEpoch();
+        if (type === "trust") advanceTrustRequestEpoch();
+      },
+    });
     const workbenchShell = createWorkbenchShell({
       getApiBase: apiBase,
       elements: {
@@ -300,6 +298,12 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         title: document.querySelector("#workbenchTitle"),
         main: document.querySelector("#workbenchMainContent"),
         match: document.querySelector("#workbenchMatchContent"),
+        contextTitle: document.querySelector("#workbenchContextTitle"),
+        contextMeta: document.querySelector("#workbenchContextMeta"),
+        contextDescription: document.querySelector("#workbenchContextDescription"),
+        contextContent: document.querySelector("#workbenchContextContent"),
+        actionBar: document.querySelector("#workbenchActionBar"),
+        actionStatus: document.querySelector("#workbenchActionStatus"),
         archiveTab: document.querySelector("#workbenchArchiveTab"),
         matchTab: document.querySelector("#workbenchMatchTab"),
         view: document.querySelector("#workbenchView"),
@@ -321,6 +325,18 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     let knowledgeDocuments = [];
     let selectedKnowledgeDocumentId = null;
     let selectedKnowledgeDocumentIds = new Set();
+    let knowledgeRequestEpoch = 0;
+
+    function captureKnowledgeRequest(overlayToken = shellState.captureOverlayRequest()) {
+      knowledgeRequestEpoch += 1;
+      return { overlayToken, epoch: knowledgeRequestEpoch, apiBase: apiBase() };
+    }
+
+    function isKnowledgeRequestCurrent(token) {
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && token.epoch === knowledgeRequestEpoch
+        && token.apiBase === apiBase();
+    }
 
     function apiBase() {
       return apiBaseInput.value.replace(/\/+$/, "");
@@ -345,26 +361,36 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       };
     }
 
-    function captureCapabilityRequest() {
-      return currentCapabilityRequestState();
+    function captureCapabilityRequest(overlayToken = shellState.captureOverlayRequest()) {
+      return {
+        ...currentCapabilityRequestState(),
+        overlayToken
+      };
     }
 
     function isCapabilityRequestCurrent(token) {
-      return CapabilityUiLogic.isRequestCurrent(
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && CapabilityUiLogic.isRequestCurrent(
         token,
         currentCapabilityRequestState()
       );
     }
 
-    function captureCapabilityAuthorityRequest() {
+    function captureCapabilityAuthorityRequest(overlayToken = shellState.captureOverlayRequest()) {
       return {
         apiBase: apiBase(),
-        identityRevision: capabilityState.identityRevision
+        identityRevision: capabilityState.identityRevision,
+        epoch: capabilityState.requestEpoch,
+        route: capabilityState.route,
+        overlayToken
       };
     }
 
     function isCapabilityAuthorityRequestCurrent(token) {
-      return CapabilityUiLogic.isAuthorityRequestCurrent(token, {
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && token.epoch === capabilityState.requestEpoch
+        && token.route === capabilityState.route
+        && CapabilityUiLogic.isAuthorityRequestCurrent(token, {
         apiBase: apiBase(),
         identityRevision: capabilityState.identityRevision
       });
@@ -374,6 +400,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       capabilityState.requestEpoch += 1;
       capabilityState.requestController.abort();
       capabilityState.requestController = new AbortController();
+      capabilityState.confirmationDecisionLocks.clear();
       clearCapabilityRawState();
     }
 
@@ -385,9 +412,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       statusEl.textContent = text;
     }
 
-    let settingsReturnFocus = settingsButton;
+    let settingsReturnFocus = workbenchSettingsButton;
 
-    async function openSettings(trigger = settingsButton) {
+    async function openSettings(trigger = workbenchSettingsButton) {
       settingsReturnFocus = trigger;
       toolGovernanceToggle.checked = state.toolGovernanceEnabled;
       settingsOverlay.hidden = false;
@@ -395,9 +422,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       await loadMemories();
     }
 
-    function closeSettings() {
+    function closeSettings({ restoreFocus = true } = {}) {
       settingsOverlay.hidden = true;
-      settingsReturnFocus?.focus();
+      if (restoreFocus) settingsReturnFocus?.focus();
     }
 
     function memoryCategoryLabel(category) {
@@ -1968,7 +1995,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         - sessionListEl.clientHeight;
       if (remaining < 120) loadSessions(false);
     });
-    settingsButton.addEventListener("click", () => openSettings(settingsButton));
     workbenchSettingsButton.addEventListener("click", () => openSettings(workbenchSettingsButton));
     settingsCloseButton.addEventListener("click", closeSettings);
     settingsOverlay.addEventListener("click", (event) => {
@@ -2003,7 +2029,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       await loadProviders();
       await loadTools();
       await loadSessions();
-      if (!capabilitiesView.hidden) await refreshCapabilityRoute();
+      if (advancedWindow.activeType() === "capabilities") await refreshCapabilityRoute();
     });
 
     function capabilityElement(tagName, className = "", text = null) {
@@ -2387,18 +2413,42 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       trustState.requestController = new AbortController();
     }
 
-    function captureTrustRequest() {
+    function captureTrustRequest(overlayToken = shellState.captureOverlayRequest()) {
       return {
         epoch: trustState.requestEpoch,
         route: trustState.route,
-        apiBase: apiBase()
+        apiBase: apiBase(),
+        overlayToken
       };
     }
 
     function isTrustRequestCurrent(token) {
-      return token.epoch === trustState.requestEpoch
+      return shellState.isOverlayRequestCurrent(token.overlayToken)
+        && token.epoch === trustState.requestEpoch
         && token.route === trustState.route
         && token.apiBase === apiBase();
+    }
+
+    function captureTrustRead(lane, selection, overlayToken = shellState.captureOverlayRequest()) {
+      return trustReadOwnership.capture({
+        ...overlayToken,
+        epoch: trustState.requestEpoch,
+        route: trustState.route,
+        apiBase: apiBase(),
+        lane,
+        selection
+      });
+    }
+
+    function isTrustReadCurrent(token, selection) {
+      return trustReadOwnership.isCurrent(token, {
+        ...shellState.captureOverlayRequest(),
+        epoch: trustState.requestEpoch,
+        route: trustState.route,
+        apiBase: apiBase(),
+        lane: token.lane,
+        selection
+      });
     }
 
     function setTrustStatus(message, isError = false) {
@@ -2452,13 +2502,20 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       trustSafetyPanel.hidden = route !== "safety";
     }
 
+    function syncTrustRunButton() {
+      if (advancedWindow.activeType() === "trust" && trustState.route === "evals") {
+        trustStartRunButton.disabled = trustRunControl.pending();
+      }
+    }
+
     function setTrustRoute(route) {
-      const paths = {
-        evals: "#/trust/evals",
-        traces: "#/trust/traces",
-        safety: "#/trust/safety"
-      };
-      navigatePrimaryHash(paths[route] || "#/trust/evals");
+      if (!['evals', 'traces', 'safety'].includes(route)) return;
+      const routeChanged = trustState.route !== route;
+      if (routeChanged) advanceTrustRequestEpoch();
+      trustState.route = route;
+      updateTrustTabs();
+      syncTrustRunButton();
+      if (advancedWindow.activeType() === "trust") void refreshTrustRoute();
     }
 
     function renderTrustEvalRuns() {
@@ -2573,16 +2630,20 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function loadTrustRunEvidence(runId) {
+    async function loadTrustRunEvidence(runId, overlayToken = shellState.captureOverlayRequest()) {
+      const request = captureTrustRequest(overlayToken);
+      const trustRead = captureTrustRead("run-evidence", runId, overlayToken);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, runId)) return;
       clearTrustError();
       setTrustStatus(`正在加载 ${runId} 的报告证据...`);
       try {
         const [caseResults, metrics, clusters, gateResult] = await Promise.allSettled([
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/case-results`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/metrics`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/failure-clusters`),
-          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/gate`)
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/case-results`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/metrics`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/failure-clusters`, { signal: trustState.requestController.signal }),
+          trustRequest(`/v1/trust/runs/${encodeURIComponent(runId)}/gate`, { signal: trustState.requestController.signal })
         ]);
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, runId)) return;
         trustState.caseResults = caseResults.status === "fulfilled"
           ? caseResults.value.case_results || []
           : [];
@@ -2597,13 +2658,16 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderTrustFailureClusters(gate);
         setTrustStatus(`已加载 ${runId} 的证据；Gate 缺失会按后端原样显示为空。`);
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, runId)) renderTrustError(error);
       }
     }
 
-    async function loadTrustEvals() {
+    async function loadTrustEvals(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
+      const request = captureTrustRequest(overlayToken);
+      const trustRead = captureTrustRead("evals", "fixture", overlayToken);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "fixture")) return;
       clearTrustError();
-      const request = captureTrustRequest();
       setTrustStatus("正在加载固定评测状态...");
       renderCapabilitySkeleton(trustEvalRuns);
       try {
@@ -2612,23 +2676,26 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
           trustRequest("/v1/trust/cases", { signal: trustState.requestController.signal }),
           trustRequest("/v1/trust/runs?run_type=fixture", { signal: trustState.requestController.signal })
         ]);
-        if (!isTrustRequestCurrent(request)) return;
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "fixture")) return;
         trustState.suites = suites.suites || [];
         trustState.cases = cases.cases || [];
         trustState.runs = runs.runs || [];
         renderTrustEvals();
       } catch (error) {
-        if (error.name !== "AbortError" && isTrustRequestCurrent(request)) renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, "fixture")) renderTrustError(error);
       }
     }
 
-    async function startTrustEvalRun() {
+    async function startTrustEvalRun(overlayToken = shellState.captureOverlayRequest()) {
+      const request = captureTrustRequest(overlayToken);
+      if (!isTrustRequestCurrent(request)) return;
       const suiteId = trustSuiteSelect.value || trustState.suites[0]?.id;
       if (!suiteId) {
         renderTrustError(new Error("没有可运行的 Suite；请先通过后端写入 Eval Suite。"));
         return;
       }
-      trustStartRunButton.disabled = true;
+      trustRunControl.begin();
+      syncTrustRunButton();
       clearTrustError();
       setTrustStatus("正在创建真实后端 Eval Run...");
       const runId = `ui-fixture-${Date.now()}`;
@@ -2649,13 +2716,16 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
             fixture_manifest_hash: null
           })
         });
-        await loadTrustEvals();
+        if (!isTrustRequestCurrent(request)) return;
+        await loadTrustEvals(overlayToken);
+        if (!isTrustRequestCurrent(request)) return;
         trustState.selectedRunId = runId;
         setTrustStatus(`已创建 Run ${runId}；执行进度以真实后端状态为准。`);
       } catch (error) {
-        renderTrustError(error);
+        if (isTrustRequestCurrent(request)) renderTrustError(error);
       } finally {
-        trustStartRunButton.disabled = false;
+        trustRunControl.settle();
+        syncTrustRunButton();
       }
     }
 
@@ -2681,8 +2751,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       setTrustStatus(`已加载 ${trustState.traces.length} 条 Trace 事件`);
     }
 
-    async function loadTrustTraces() {
-      clearTrustError();
+    async function loadTrustTraces(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const params = new URLSearchParams();
       const filters = [
         ["eval_run_id", trustTraceRunFilter.value],
@@ -2695,14 +2765,21 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         if (value.trim()) params.set(key, value.trim());
       }
       const suffix = params.toString() ? `?${params.toString()}` : "";
+      const request = captureTrustRequest(overlayToken);
+      const trustRead = captureTrustRead("traces", suffix, overlayToken);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, suffix)) return;
+      clearTrustError();
       setTrustStatus("正在加载 Trace...");
       renderCapabilitySkeleton(trustTraceEvents);
       try {
-        const payload = await trustRequest(`/v1/trust/traces${suffix}`);
+        const payload = await trustRequest(`/v1/trust/traces${suffix}`, {
+          signal: trustState.requestController.signal
+        });
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, suffix)) return;
         trustState.traces = payload.traces || [];
         renderTrustTraces();
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, suffix)) renderTrustError(error);
       }
     }
 
@@ -2734,27 +2811,37 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       setTrustStatus(`Safety Gate: ${safety.gate_status || "unknown"}`);
     }
 
-    async function loadTrustSafety() {
+    async function loadTrustSafety(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
+      const request = captureTrustRequest(overlayToken);
+      const trustRead = captureTrustRead("safety", "safety", overlayToken);
+      if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "safety")) return;
       clearTrustError();
       setTrustStatus("正在加载 Safety 状态...");
       renderCapabilitySkeleton(trustSafetyEvidence);
       try {
-        const payload = await trustRequest("/v1/trust/safety");
+        const payload = await trustRequest("/v1/trust/safety", {
+          signal: trustState.requestController.signal
+        });
+        if (!isTrustRequestCurrent(request) || !isTrustReadCurrent(trustRead, "safety")) return;
         trustState.safety = payload;
         renderTrustSafety();
       } catch (error) {
-        renderTrustError(error);
+        if (error.name !== "AbortError" && isTrustRequestCurrent(request) && isTrustReadCurrent(trustRead, "safety")) renderTrustError(error);
       }
     }
 
     async function refreshTrustRoute() {
+      const overlayToken = shellState.captureOverlayRequest();
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       updateTrustTabs();
+      syncTrustRunButton();
       if (trustState.route === "traces") {
-        await loadTrustTraces();
+        await loadTrustTraces(overlayToken);
       } else if (trustState.route === "safety") {
-        await loadTrustSafety();
+        await loadTrustSafety(overlayToken);
       } else {
-        await loadTrustEvals();
+        await loadTrustEvals(overlayToken);
       }
     }
 
@@ -3311,7 +3398,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       renderCapabilityRawDefinition(capabilityDetail, skill.name);
     }
 
-    async function loadCapabilityServers() {
+    async function loadCapabilityServers(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureCapabilityRequest();
       const requestApplies = capabilityState.route === "mcp-servers";
       if (!capabilityState.servers.length) {
@@ -3458,7 +3546,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function loadCapabilitySkills() {
+    async function loadCapabilitySkills(overlayToken = shellState.captureOverlayRequest()) {
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       const request = captureCapabilityRequest();
       const requestApplies = capabilityState.route === "skills";
       if (!capabilityState.skills.length) {
@@ -3735,7 +3824,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         .filter(value => Number.isFinite(value) && value > Date.now());
       if (!expiries.length) return;
       const delay = Math.min(Math.min(...expiries) - Date.now() + 20, 2_147_000_000);
+      const request = captureCapabilityRequest();
       capabilityState.confirmationExpiryTimer = setTimeout(() => {
+        if (!isCapabilityRequestCurrent(request)) return;
         const expired = [...capabilityState.confirmations.values()].filter(
           item => {
             const expiresAt = Date.parse(item.expires_at || "");
@@ -3746,9 +3837,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderCapabilityConfirmations();
         renderCurrentCapabilityState();
         void (async () => {
-          await loadCapabilityConfirmations();
+          await loadCapabilityConfirmations(request.overlayToken);
+          if (!isCapabilityRequestCurrent(request)) return;
           for (const confirmation of expired) {
-            await refreshCapabilityAuthorityForConfirmation(confirmation);
+            await refreshCapabilityAuthorityForConfirmation(
+              confirmation,
+              request.overlayToken
+            );
+            if (!isCapabilityRequestCurrent(request)) return;
           }
         })();
       }, Math.max(20, delay));
@@ -3847,8 +3943,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function loadCapabilityConfirmations() {
-      const request = captureCapabilityRequest();
+    async function loadCapabilityConfirmations(overlayToken = shellState.captureOverlayRequest()) {
+      const request = captureCapabilityRequest(overlayToken);
+      if (!isCapabilityRequestCurrent(request)) return;
       const proposalIdsAtRequest = new Set(
         capabilityState.confirmationProposalIds
       );
@@ -3885,12 +3982,13 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function refreshCapabilityAuthorityForConfirmation(confirmation) {
+    async function refreshCapabilityAuthorityForConfirmation(confirmation, overlayToken = shellState.captureOverlayRequest()) {
       const summary = confirmation.arguments_summary || {};
       const operation = summary.operation || "";
       const target = summary.target;
       if (!target) return;
-      const request = captureCapabilityAuthorityRequest();
+      const request = captureCapabilityAuthorityRequest(overlayToken);
+      if (!isCapabilityAuthorityRequestCurrent(request)) return;
       try {
         if (operation.startsWith("server.")) {
           const payload = await capabilityRequest(
@@ -3954,10 +4052,11 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       }
     }
 
-    async function decideCapabilityConfirmation(confirmation, decision) {
+    async function decideCapabilityConfirmation(confirmation, decision, overlayToken = shellState.captureOverlayRequest()) {
       if (!CapabilityUiLogic.isManagementConfirmation(confirmation)) return;
       if (capabilityState.confirmationDecisionLocks.has(confirmation.id)) return;
-      const request = captureCapabilityRequest();
+      const request = captureCapabilityRequest(overlayToken);
+      if (!isCapabilityRequestCurrent(request)) return;
       capabilityState.confirmationDecisionLocks.add(confirmation.id);
       renderCapabilityConfirmations();
       const idempotencySlot = `${confirmation.id}:${decision}`;
@@ -3992,9 +4091,11 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       } catch (error) {
         if (isCapabilityRequestCurrent(request)) renderCapabilityError(error);
       } finally {
+        if (!isCapabilityRequestCurrent(request)) return;
         capabilityState.confirmationDecisionLocks.delete(confirmation.id);
-        await loadCapabilityConfirmations();
-        await refreshCapabilityAuthorityForConfirmation(confirmation);
+        await loadCapabilityConfirmations(overlayToken);
+        if (!isCapabilityRequestCurrent(request)) return;
+        await refreshCapabilityAuthorityForConfirmation(confirmation, overlayToken);
         if (isCapabilityRequestCurrent(request)) {
           renderCapabilityConfirmations();
           renderCurrentCapabilityState();
@@ -4003,15 +4104,19 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
     }
 
     async function refreshCapabilityRoute() {
+      const overlayToken = shellState.captureOverlayRequest();
+      if (!shellState.isOverlayRequestCurrent(overlayToken)) return;
       capabilityRefreshButton.disabled = true;
       try {
         if (capabilityState.route === "skills") {
-          await loadCapabilitySkills();
+          await loadCapabilitySkills(overlayToken);
         } else {
-          await loadCapabilityServers();
+          await loadCapabilityServers(overlayToken);
         }
       } finally {
-        capabilityRefreshButton.disabled = false;
+        if (shellState.isOverlayRequestCurrent(overlayToken)) {
+          capabilityRefreshButton.disabled = false;
+        }
       }
     }
 
@@ -4028,105 +4133,80 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
 
     function navigatePrimaryHash(hash) {
       if (window.location.hash === hash) {
-        applyPrimaryHashRoute();
+        void applyPrimaryHashRoute();
       } else {
         window.location.hash = hash;
       }
     }
 
+    const workbenchCenterScroll = document.querySelector(".workspace-scroll-region");
+    const workbenchContextScroll = document.querySelector("#workbenchContextContent");
+    let renderedPrimaryRoute = shellState.snapshot().primaryRoute;
+
+    function rememberRouteScroll(route) {
+      shellState.rememberScroll(`${route}:center`, workbenchCenterScroll.scrollTop);
+      shellState.rememberScroll(`${route}:context`, workbenchContextScroll.scrollTop);
+    }
+
+    function restoreRouteScroll(route) {
+      workbenchCenterScroll.scrollTop = shellState.scrollFor(`${route}:center`);
+      workbenchContextScroll.scrollTop = shellState.scrollFor(`${route}:context`);
+    }
+
+    const routeActivation = createRouteActivationCoordinator({
+      onStart(route) {
+        rememberRouteScroll(renderedPrimaryRoute);
+        shellState.navigate(route);
+        workbenchPageTab.setAttribute("aria-current", route === "workbench" ? "page" : "false");
+        versionMapPageTab.setAttribute("aria-current", route === "version-map" ? "page" : "false");
+        applicationsPageTab.setAttribute("aria-current", route === "applications" ? "page" : "false");
+      },
+      activate: route => workbenchShell.activate(route),
+      onActivated(route) {
+        renderedPrimaryRoute = route;
+      },
+      onCurrent(route) {
+        restoreRouteScroll(route);
+      },
+    });
+
     function setCapabilityRoute(route) {
-      navigatePrimaryHash(
-        route === "skills"
-          ? "#/capabilities/skills"
-          : "#/capabilities/mcp-servers"
-      );
+      if (!["mcp-servers", "skills"].includes(route)) return;
+      const routeChanged = capabilityState.route !== route;
+      if (routeChanged) advanceCapabilityRequestEpoch();
+      capabilityState.route = route;
+      updateCapabilityTabs();
+      if (advancedWindow.activeType() === "capabilities") {
+        void refreshCapabilityRoute();
+        void loadCapabilityConfirmations();
+      }
     }
 
     async function applyPrimaryHashRoute() {
-      const route = CapabilityUiLogic.resolvePrimaryRoute(
-        window.location.hash
-      );
-      if (route === "mcp-servers" || route === "skills") {
-        const routeChanged = capabilityState.route !== route
-          || capabilitiesView.hidden;
-        if (routeChanged) advanceCapabilityRequestEpoch();
-        if (!trustView.hidden) advanceTrustRequestEpoch();
-        capabilityState.route = route;
-        updateCapabilityTabs();
-        showPrimaryView("capabilities");
-        await refreshCapabilityRoute();
-        await loadCapabilityConfirmations();
-        return;
-      }
-      if (route === "workbench" || route === "version-map" || route === "applications") {
-        if (!capabilitiesView.hidden) advanceCapabilityRequestEpoch();
-        if (!trustView.hidden) advanceTrustRequestEpoch();
-        showPrimaryView(route);
-        await workbenchShell.activate(route);
-        return;
-      }
-      if (route === "trust-evals" || route === "trust-traces" || route === "trust-safety") {
-        const trustRoute = route.replace("trust-", "");
-        const routeChanged = trustState.route !== trustRoute || trustView.hidden;
-        if (routeChanged) advanceTrustRequestEpoch();
-        if (!capabilitiesView.hidden) advanceCapabilityRequestEpoch();
-        trustState.route = trustRoute;
-        showPrimaryView("trust");
-        await refreshTrustRoute();
-        return;
-      }
-      if (!capabilitiesView.hidden) advanceCapabilityRequestEpoch();
-      if (!trustView.hidden) advanceTrustRequestEpoch();
-      if (route === "knowledge") {
-        showPrimaryView("knowledge");
+      const route = resolveShellRoute(window.location.hash, requestedRoute);
+      await routeActivation.apply(route);
+    }
+
+    async function openAdvancedWindow(type, trigger) {
+      const replacingType = advancedWindow.activeType();
+      if (replacingType && replacingType !== type) {
+        advancedWindow.replace(type, nextType => shellState.openOverlay(nextType));
       } else {
-        showPrimaryView("chat");
-        messageInput.focus();
+        shellState.openOverlay(type);
+        advancedWindow.open(type, trigger);
       }
+      const overlayToken = shellState.captureOverlayRequest();
+      if (type === "knowledge") await loadKnowledgeBase(overlayToken);
+      if (type === "capabilities") {
+        await refreshCapabilityRoute();
+        await loadCapabilityConfirmations(overlayToken);
+      }
+      if (type === "trust") await refreshTrustRoute();
     }
 
     function setKnowledgeStatus(message, isError = false) {
       knowledgeStatus.textContent = message;
       knowledgeStatus.style.color = isError ? "var(--warn)" : "var(--muted)";
-    }
-
-    function showPrimaryView(view) {
-      const knowledge = view === "knowledge";
-      const capabilities = view === "capabilities";
-      const trust = view === "trust";
-      const workbench = view === "workbench" || view === "version-map" || view === "applications";
-      (workbench ? workbenchChatDock : chatView).append(chatDock);
-      if (workbench) {
-        const composerWrap = chatDock.querySelector(".composer-wrap");
-        if (composerWrap && workbenchAgentSuggestions.parentElement !== chatDock) {
-          composerWrap.before(workbenchAgentSuggestions);
-        }
-        workbenchAgentSuggestions.hidden = false;
-      } else {
-        workbenchAgentSuggestions.hidden = true;
-      }
-      chatView.hidden = knowledge || capabilities || trust || workbench;
-      knowledgeView.hidden = !knowledge;
-      capabilitiesView.hidden = !capabilities;
-      trustView.hidden = !trust;
-      workbenchView.hidden = !workbench;
-      document.body.classList.toggle("workbench-active", workbench);
-      chatNavButton.setAttribute(
-        "aria-current",
-        !knowledge && !capabilities && !trust && !workbench ? "page" : "false"
-      );
-      knowledgeNavButton.setAttribute("aria-current", knowledge ? "page" : "false");
-      capabilitiesNavButton.setAttribute(
-        "aria-current",
-        capabilities ? "page" : "false"
-      );
-      trustNavButton.setAttribute("aria-current", trust ? "page" : "false");
-      workbenchNavButton.setAttribute("aria-current", view === "workbench" ? "page" : "false");
-      versionMapNavButton.setAttribute("aria-current", view === "version-map" ? "page" : "false");
-      workbenchPageTab.setAttribute("aria-current", view === "workbench" ? "page" : "false");
-      versionMapPageTab.setAttribute("aria-current", view === "version-map" ? "page" : "false");
-      applicationsPageTab.setAttribute("aria-current", view === "applications" ? "page" : "false");
-      if (knowledge) loadKnowledgeBase();
     }
 
     async function knowledgeError(response, fallback) {
@@ -4135,18 +4215,24 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       return detail?.detail?.message || detail?.message || fallback;
     }
 
-    async function loadKnowledgeBase() {
+    async function loadKnowledgeBase(overlayToken = shellState.captureOverlayRequest()) {
+      const request = captureKnowledgeRequest(overlayToken);
+      if (!isKnowledgeRequestCurrent(request)) return;
       setKnowledgeStatus("正在加载知识库...");
       knowledgeDocumentList.replaceChildren();
       try {
         const basesResponse = await fetch(`${apiBase()}/v1/knowledge-bases`);
+        if (!isKnowledgeRequestCurrent(request)) return;
         if (!basesResponse.ok) throw new Error(await knowledgeError(basesResponse, "知识库加载失败"));
         const bases = await basesResponse.json();
+        if (!isKnowledgeRequestCurrent(request)) return;
         activeKnowledgeBaseId = bases.knowledge_bases[0]?.id || null;
         if (!activeKnowledgeBaseId) throw new Error("没有可用知识库");
         const response = await fetch(`${apiBase()}/v1/knowledge-bases/${activeKnowledgeBaseId}/documents`);
+        if (!isKnowledgeRequestCurrent(request)) return;
         if (!response.ok) throw new Error(await knowledgeError(response, "文档列表加载失败"));
         const payload = await response.json();
+        if (!isKnowledgeRequestCurrent(request)) return;
         knowledgeDocuments = payload.documents;
         const existingDocumentIds = new Set(knowledgeDocuments.map(item => item.id));
         selectedKnowledgeDocumentIds = new Set(
@@ -4162,7 +4248,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         renderKnowledgeDocuments(knowledgeDocuments);
         setKnowledgeStatus(`已加载 ${knowledgeDocuments.length} 份文档`);
       } catch (error) {
-        setKnowledgeStatus(error.message || "知识库加载失败", true);
+        if (isKnowledgeRequestCurrent(request)) {
+          setKnowledgeStatus(error.message || "知识库加载失败", true);
+        }
       }
     }
 
@@ -4252,17 +4340,21 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       else knowledgeChunkPreview.style.removeProperty("color");
     }
 
-    async function loadKnowledgeChunks(item) {
+    async function loadKnowledgeChunks(item, overlayToken = shellState.captureOverlayRequest()) {
+      const request = captureKnowledgeRequest(overlayToken);
+      if (!isKnowledgeRequestCurrent(request)) return;
       selectedKnowledgeDocumentId = item.id;
       renderKnowledgeDocuments(knowledgeDocuments);
       showKnowledgeChunkMessage(item, "正在加载 Chunk...");
       setKnowledgeStatus(`正在加载 ${item.filename} 的 Chunk...`);
       try {
         const response = await fetch(`${apiBase()}/v1/knowledge-bases/${activeKnowledgeBaseId}/documents/${item.id}/chunks`);
+        if (!isKnowledgeRequestCurrent(request)) return;
         if (!response.ok) {
           throw new Error(await knowledgeError(response, "Chunk 预览失败"));
         }
         const payload = await response.json();
+        if (!isKnowledgeRequestCurrent(request)) return;
         knowledgeChunkPreview.replaceChildren();
         knowledgeChunkPreview.className = "";
         knowledgeChunkPreview.style.removeProperty("color");
@@ -4282,6 +4374,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         }
         setKnowledgeStatus(`已显示 ${payload.chunks.length} 个 Chunk`);
       } catch (error) {
+        if (!isKnowledgeRequestCurrent(request)) return;
         const message = error.message || "Chunk 预览失败";
         showKnowledgeChunkMessage(item, message, true);
         setKnowledgeStatus(message, true);
@@ -4401,14 +4494,6 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       renderKnowledgeDocuments(knowledgeDocuments);
     });
     knowledgeDeleteSelectedButton.addEventListener("click", deleteSelectedKnowledgeDocuments);
-    workbenchNavButton.addEventListener(
-      "click",
-      () => navigatePrimaryHash("#/workbench")
-    );
-    versionMapNavButton.addEventListener(
-      "click",
-      () => navigatePrimaryHash("#/version-map")
-    );
     workbenchPageTab.addEventListener(
       "click",
       () => navigatePrimaryHash("#/workbench")
@@ -4540,21 +4625,17 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         card.append(confirm);
       }
     });
-    chatNavButton.addEventListener(
-      "click",
-      () => navigatePrimaryHash("#/chat")
-    );
     knowledgeNavButton.addEventListener(
       "click",
-      () => { closeSettings(); navigatePrimaryHash("#/knowledge"); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("knowledge", settingsReturnFocus); }
     );
     capabilitiesNavButton.addEventListener(
       "click",
-      () => { closeSettings(); setCapabilityRoute(capabilityState.route); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("capabilities", settingsReturnFocus); }
     );
     trustNavButton.addEventListener(
       "click",
-      () => { closeSettings(); setTrustRoute(trustState.route); }
+      () => { closeSettings({ restoreFocus: false }); void openAdvancedWindow("trust", settingsReturnFocus); }
     );
     capabilityServersTab.addEventListener(
       "click",
@@ -4608,14 +4689,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       const detail = capabilityState.skillDetails.get(
         capabilityState.selectedSkillName
       );
-      if (!capabilitiesView.hidden && detail) {
+      if (advancedWindow.activeType() === "capabilities" && detail) {
         renderCapabilitySkillDetail(detail);
       }
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape" || capabilitiesView.hidden) return;
-      const selected = capabilityList.querySelector('[aria-current="true"]');
-      selected?.focus();
     });
     chatKnowledgeMode.addEventListener("change", async () => {
       if (chatKnowledgeMode.value === "auto" && !activeKnowledgeBaseId) {

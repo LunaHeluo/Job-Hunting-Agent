@@ -13,11 +13,17 @@ const NEXT = Object.freeze({
 
 function token(prefix) { return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`; }
 
-export function createApplicationsBoard({ request, elements }) {
+export function createApplicationsBoard({ request, elements, onApplicationSelect = () => {} }) {
   let workspaceId = "";
+  let activeCard = null;
+  let selectedApplicationId = null;
+  let lifecycleIsCurrent = () => true;
 
-  async function render(nextWorkspaceId, query = "", status = "") {
+  async function render(nextWorkspaceId, query = "", status = "", options = {}) {
+    if (typeof options.isCurrent === "function") lifecycleIsCurrent = options.isCurrent;
+    const isCurrent = lifecycleIsCurrent;
     workspaceId = nextWorkspaceId;
+    if (!isCurrent()) return;
     elements.main.textContent = "正在加载投递看板…";
     try {
       const params = new URLSearchParams({ workspace_id: workspaceId });
@@ -28,11 +34,13 @@ export function createApplicationsBoard({ request, elements }) {
         request(`/v1/workbench/analytics/funnel?workspace_id=${encodeURIComponent(workspaceId)}`),
         request(`/v1/workbench/reminders?workspace_id=${encodeURIComponent(workspaceId)}`),
       ]);
+      if (!isCurrent()) return;
       renderBoard(page.items || [], query, status, funnel, reminders);
-    } catch (error) { elements.main.textContent = `投递看板加载失败：${error.message}`; }
+    } catch (error) { if (isCurrent()) elements.main.textContent = `投递看板加载失败：${error.message}`; }
   }
 
   function renderBoard(items, query, status, funnel, reminders) {
+    activeCard = null;
     const shell = document.createElement("section"); shell.className = "applications-board";
     const toolbar = document.createElement("div"); toolbar.className = "applications-toolbar";
     const search = document.createElement("input"); search.type = "search"; search.placeholder = "搜索公司、岗位或下一步"; search.value = query; search.setAttribute("aria-label", "搜索投递记录");
@@ -56,11 +64,41 @@ export function createApplicationsBoard({ request, elements }) {
       columns.append(column);
     }
     shell.append(columns); elements.main.replaceChildren(shell);
+    const restored = items.find(item => item.application.application_id === selectedApplicationId)?.application;
+    if (restored) onApplicationSelect(restored);
+    else if (selectedApplicationId) {
+      selectedApplicationId = null;
+      onApplicationSelect(null);
+    }
   }
 
   function renderCard(value) {
     const application = value.application; const job = value.job_snapshot;
     const card = document.createElement("article"); card.className = "application-card";
+    card.tabIndex = 0;
+    if (application.application_id === selectedApplicationId) {
+      activeCard = card;
+      card.classList.add("is-active");
+      card.setAttribute("aria-current", "true");
+    } else {
+      card.setAttribute("aria-current", "false");
+    }
+    const selectApplication = () => {
+      activeCard?.classList.remove("is-active");
+      activeCard?.setAttribute("aria-current", "false");
+      selectedApplicationId = application.application_id;
+      activeCard = card;
+      card.classList.add("is-active");
+      card.setAttribute("aria-current", "true");
+      onApplicationSelect(application);
+    };
+    card.addEventListener("click", selectApplication);
+    card.addEventListener("keydown", event => {
+      if (event.target === card && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        selectApplication();
+      }
+    });
     const title = document.createElement("h3"); title.textContent = `${job.company} · ${job.title}`;
     const meta = document.createElement("p"); meta.textContent = `优先级 ${application.priority} · 简历 ${application.resume_version_id}`;
     const next = document.createElement("p"); next.textContent = `下一步：${application.next_action || "未设置"}`;
@@ -96,7 +134,7 @@ export function createApplicationsBoard({ request, elements }) {
       try {
         await request(`/v1/workbench/applications/${encodeURIComponent(application.application_id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: application.revision, priority: application.priority, next_action: action.value.trim() || null, remind_at: when.value ? new Date(when.value).toISOString() : null }) });
         await render(workspaceId);
-      } catch (error) { status.textContent = `提醒保存失败：${error.message}；投递状态未改变。`; save.disabled = false; }
+      } catch (error) { if (lifecycleIsCurrent()) { status.textContent = `提醒保存失败：${error.message}；投递状态未改变。`; save.disabled = false; } }
     });
     panel.append(status, when, action, save); card.append(panel);
   }
@@ -109,7 +147,7 @@ export function createApplicationsBoard({ request, elements }) {
     try {
       review = await request(`/v1/workbench/applications/${encodeURIComponent(application.application_id)}/interview-review`);
     } catch (error) {
-      if (error.status !== 404) { panel.textContent = `复盘加载失败：${error.message}`; return; }
+      if (error.status !== 404) { if (lifecycleIsCurrent()) panel.textContent = `复盘加载失败：${error.message}`; return; }
       review = await request("/v1/workbench/interview-reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ review_id: token("ir"), application_id: application.application_id }) });
     }
     renderInterviewPanel(panel, review, application);
@@ -135,7 +173,7 @@ export function createApplicationsBoard({ request, elements }) {
       try {
         const updated = await request(`/v1/workbench/interview-reviews/${encodeURIComponent(review.review_id)}/rounds`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: review.revision, round_id: token("round"), round_type: type.value.trim(), occurred_at: new Date().toISOString(), questions: lines(questions.value), answers: [], feedback: lines(feedback.value), result: result.value.trim() || null, improvement_items: lines(improvements.value), user_confirmed: true }) });
         renderInterviewPanel(panel, updated, application);
-      } catch (error) { privacy.textContent = `保存失败：${error.message}`; save.disabled = false; }
+      } catch (error) { if (lifecycleIsCurrent()) { privacy.textContent = `保存失败：${error.message}`; save.disabled = false; } }
     });
     panel.append(heading, privacy, rounds, type, questions, feedback, result, improvements, save);
     if (review.rounds.length) {
@@ -143,7 +181,7 @@ export function createApplicationsBoard({ request, elements }) {
       propose.addEventListener("click", async () => {
         propose.disabled = true;
         try { renderInterviewPanel(panel, await request(`/v1/workbench/interview-reviews/${encodeURIComponent(review.review_id)}/summary-candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: review.revision, summary_id: token("is") }) }), application); }
-        catch (error) { privacy.textContent = `摘要失败：${error.message}`; propose.disabled = false; }
+        catch (error) { if (lifecycleIsCurrent()) { privacy.textContent = `摘要失败：${error.message}`; propose.disabled = false; } }
       }); panel.append(propose);
     }
     for (const summary of review.summary_candidates) {
@@ -153,7 +191,7 @@ export function createApplicationsBoard({ request, elements }) {
       candidate.append(text, source);
       if (summary.status === "pending") for (const decision of ["accepted", "rejected"]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = decision === "accepted" ? "确认采用" : "拒绝";
-        button.addEventListener("click", async () => { button.disabled = true; try { renderInterviewPanel(panel, await request(`/v1/workbench/interview-reviews/${encodeURIComponent(review.review_id)}/summary-candidates/${encodeURIComponent(summary.summary_id)}/decision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: review.revision, decision }) }), application); } catch (error) { privacy.textContent = `决策失败：${error.message}`; button.disabled = false; } });
+        button.addEventListener("click", async () => { button.disabled = true; try { const updated = await request(`/v1/workbench/interview-reviews/${encodeURIComponent(review.review_id)}/summary-candidates/${encodeURIComponent(summary.summary_id)}/decision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: review.revision, decision }) }); if (lifecycleIsCurrent()) renderInterviewPanel(panel, updated, application); } catch (error) { if (lifecycleIsCurrent()) { privacy.textContent = `决策失败：${error.message}`; button.disabled = false; } } });
         candidate.append(button);
       }
       panel.append(candidate);
@@ -174,7 +212,7 @@ export function createApplicationsBoard({ request, elements }) {
       try {
         await request(`/v1/workbench/applications/${encodeURIComponent(application.application_id)}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation_id: token("op_application"), idempotency_key: id, event_id: token("ae"), workspace_id: workspaceId, expected_revision: application.revision, to_status: toStatus, note: note.value.trim() || null, next_action: next.value.trim() || null, remind_at: null, user_confirmed: true }) });
         await render(workspaceId);
-      } catch (error) { copy.textContent = `记录失败：${error.message}`; confirm.disabled = false; }
+      } catch (error) { if (lifecycleIsCurrent()) { copy.textContent = `记录失败：${error.message}`; confirm.disabled = false; } }
     });
     panel.append(copy, note, next, confirm); card.append(panel);
   }
@@ -190,7 +228,7 @@ export function createApplicationsBoard({ request, elements }) {
       try {
         await request("/v1/workbench/applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation_id: token("op_application"), idempotency_key: key, application_id: token("app"), event_id: token("ae"), workspace_id: workspaceId, job_snapshot_id: context.job_snapshot_id, resume_version_id: context.resume_version_id, initial_status: "applied", priority: 50, next_action: "等待后续通知", note: "用户明确确认已投递", user_confirmed: true }) });
         await render(workspaceId);
-      } catch (error) { copy.textContent = `创建失败：${error.message}`; confirm.disabled = false; }
+      } catch (error) { if (lifecycleIsCurrent()) { copy.textContent = `创建失败：${error.message}`; confirm.disabled = false; } }
     });
     panel.append(copy, confirm); container.prepend(panel);
   }

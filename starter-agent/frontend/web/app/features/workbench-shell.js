@@ -5,6 +5,23 @@ import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js";
 
+export function createRouteActivationCoordinator({ activate, onStart, onActivated = () => {}, onCurrent, schedule = callback => requestAnimationFrame(callback) }) {
+  let epoch = 0;
+  return Object.freeze({
+    async apply(route) {
+      const token = ++epoch;
+      onStart(route);
+      await activate(route);
+      if (token !== epoch) return false;
+      onActivated(route);
+      schedule(() => {
+        if (token === epoch) onCurrent(route);
+      });
+      return true;
+    },
+  });
+}
+
 export function createWorkbenchShell({ getApiBase, elements }) {
   let workspaces = [];
   let activeWorkspaceId = localStorage.getItem(WORKSPACE_KEY) || "";
@@ -12,6 +29,58 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   let activeRoute = "workbench";
   let contextWorkspaceId = "";
   let currentHome = null;
+  let loadEpoch = 0;
+  let activationEpoch = 0;
+
+  function isCurrentActivation(route, token) {
+    return activeRoute === route && activationEpoch === token;
+  }
+
+  function renderContext({ title, meta = "", description = "", content }) {
+    elements.contextTitle.textContent = title;
+    elements.contextMeta.textContent = meta;
+    elements.contextDescription.textContent = description;
+    elements.contextContent.replaceChildren();
+    if (content) elements.contextContent.append(content);
+  }
+
+  function renderWorkbenchContext() {
+    renderContext({
+      title: "岗位候选",
+      meta: elements.jobCount.textContent,
+      description: "确认后的 JD 可在这里快速查看，并进入完整匹配分析。",
+      content: elements.jobList,
+    });
+  }
+
+  function renderVersionContext(node, { inspectorMount = elements.jobList } = {}) {
+    if (!node) {
+      const empty = document.createElement("section");
+      empty.className = "context-detail-card";
+      empty.textContent = "选择版本节点后显示版本详情与可用操作。";
+      renderContext({ title: "版本详情", description: "当前版本地图尚未选择节点", content: empty });
+      return;
+    }
+    renderContext({ title: "版本详情", meta: `r${node.revision}`, description: "当前选中的简历版本", content: inspectorMount });
+  }
+
+  function renderApplicationContext(application) {
+    if (!application) {
+      const empty = document.createElement("section");
+      empty.className = "context-detail-card";
+      empty.textContent = "选择投递卡片后显示状态、下一步与相关操作。";
+      renderContext({ title: "投递详情", description: "当前投递看板尚未选择记录", content: empty });
+      return;
+    }
+    const panel = document.createElement("section");
+    panel.className = "context-detail-card";
+    const heading = document.createElement("strong");
+    heading.textContent = application.title || application.application_id;
+    const detail = document.createElement("p");
+    detail.textContent = `状态：${application.status || application.current_status} · 下一步：${application.next_action || "未设置"}`;
+    panel.append(heading, detail);
+    renderContext({ title: "投递详情", description: "当前选中的投递记录", content: panel });
+  }
 
   function setContentHeadingVisibility(panel) {
     const heading = elements.title.closest(".workbench-section-heading");
@@ -67,6 +136,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       status: elements.status,
     },
     reloadHome: () => load(true),
+    onVersionSelect: renderVersionContext,
   });
   const jobMatching = createJobMatching({
     request,
@@ -75,7 +145,11 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     reloadHome: () => load(true),
   });
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
-  const applicationsBoard = createApplicationsBoard({ request, elements: { main: elements.main } });
+  const applicationsBoard = createApplicationsBoard({
+    request,
+    elements: { main: elements.main },
+    onApplicationSelect: renderApplicationContext,
+  });
 
   const STAGES = Object.freeze({
     A: {
@@ -148,7 +222,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.stagePrimary.disabled = stats.active_operation_count > 0 && stage === "C";
     elements.stageSecondary.hidden = !config.secondary;
     elements.stageSecondary.textContent = config.secondary || "";
-    elements.candidateRail.hidden = stage === "A";
+    elements.candidateRail.hidden = false;
     elements.matchTab.disabled = stage === "A";
     elements.matchTab.title = stage === "A" ? "先上传简历建档" : "";
     replaceAgentActions(stage);
@@ -182,7 +256,8 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     return states;
   }
 
-  function renderHome(home) {
+  async function renderHome(home, route, isCurrent) {
+    if (!isCurrent()) return;
     currentHome = home;
     const stats = home.stats || {};
     // 阶段只由后端 home 统计推导，不会显示虚假统计或模拟成功状态。
@@ -201,6 +276,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.jobList.textContent = stats.job_count
       ? `已确认岗位 ${stats.job_count} 个；候选来源需逐项确认。`
       : "暂无已确认岗位。";
+    if (route === "workbench") renderWorkbenchContext();
+    else if (route === "version-map") renderVersionContext(null);
+    else if (route === "applications") renderApplicationContext(null);
     elements.agentContext.textContent = stats.resume_count
       ? `当前上下文：${home.workspace?.name || "求职目标"}；Agent 不会自动提交修改。`
       : "建立档案后，Agent 才会获得显式 ResumeVersion 上下文。";
@@ -214,12 +292,18 @@ export function createWorkbenchShell({ getApiBase, elements }) {
         ? { workspace_id: contextWorkspaceId, resume_version_id: null, job_snapshot_id: null, match_analysis_id: null, resume_branch_id: null, lineage_focus_version_id: null, merge_proposal_id: null }
         : { workspace_id: contextWorkspaceId });
     }
-    resumeWorkspace.renderResumeList(
+    const resumeRender = resumeWorkspace.renderResumeList(
       home,
-      activeRoute,
+      route,
       home.workspace?.workspace_id || activeWorkspaceId,
+      { isCurrent },
     );
-    if (activeRoute === "workbench") {
+    if (!isCurrent()) return;
+    if (route === "version-map") {
+      await resumeRender;
+      return;
+    }
+    if (route === "workbench") {
       jobMatching.renderJobList(home, activeWorkspaceId);
       if (mode === "C") {
         showContentPanel("match");
@@ -237,9 +321,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
         elements.main.textContent = "上传现有简历后，这里会展示结构化档案预览。";
       }
       operationMonitor.load(activeWorkspaceId);
-    } else if (activeRoute === "applications") {
+    } else if (route === "applications") {
       elements.jobList.textContent = "投递记录只绑定已确认的岗位快照与简历版本。";
-      applicationsBoard.render(activeWorkspaceId);
+      await applicationsBoard.render(activeWorkspaceId, "", "", { isCurrent });
     }
   }
 
@@ -263,29 +347,37 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     }
   }
 
-  async function load(force = false) {
-    if (loading) return;
+  async function load(force = false, route = activeRoute, activationToken = activationEpoch) {
+    const token = ++loadEpoch;
+    const isCurrent = () => token === loadEpoch && isCurrentActivation(route, activationToken);
+    if (!isCurrent()) return;
     loading = true;
     setStatus("正在加载权威工作台状态…");
     try {
       const page = await request("/v1/workbench/workspaces?limit=50");
+      if (!isCurrent()) return;
       workspaces = page.items || [];
       if (!workspaces.some(item => item.workspace_id === activeWorkspaceId)) {
         activeWorkspaceId = workspaces[0]?.workspace_id || "";
       }
       renderWorkspaceOptions();
       if (!activeWorkspaceId) {
-        renderHome({ stats: {}, recent_versions: [], workspace: null });
+        await renderHome({ stats: {}, recent_versions: [], workspace: null }, route, isCurrent);
+        if (!isCurrent()) return;
         setStatus("尚未创建求职目标；导入首份简历时会自动创建。", false);
         return;
       }
       localStorage.setItem(WORKSPACE_KEY, activeWorkspaceId);
-      renderHome(await request(`/v1/workbench/workspaces/${encodeURIComponent(activeWorkspaceId)}/home`));
+      const home = await request(`/v1/workbench/workspaces/${encodeURIComponent(activeWorkspaceId)}/home`);
+      if (!isCurrent()) return;
+      await renderHome(home, route, isCurrent);
     } catch (error) {
-      setStatus(`工作台加载失败：${error.message}`, true);
-      elements.main.textContent = "数据未加载成功。已保留当前页面，可稍后重试。";
+      if (isCurrent()) {
+        setStatus(`工作台加载失败：${error.message}`, true);
+        elements.main.textContent = "数据未加载成功。已保留当前页面，可稍后重试。";
+      }
     } finally {
-      loading = false;
+      if (isCurrent()) loading = false;
     }
   }
 
@@ -304,9 +396,15 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     if (currentHome) jobMatching.renderMain(currentHome, activeWorkspaceId);
   });
   async function activate(route) {
+    const token = ++activationEpoch;
     activeRoute = route;
     elements.title.textContent = route === "version-map" ? "版本地图" : route === "applications" ? "投递看板" : elements.title.textContent;
-    await load(true);
+    elements.actionStatus.textContent = route === "version-map"
+      ? "选择版本后显示可用操作"
+      : route === "applications"
+        ? "选择投递记录后显示可用操作"
+        : "选择当前任务后显示可用操作";
+    await load(true, route, token);
   }
   async function tailorResume(context) {
     const workspaceId = context?.workspace_id || activeWorkspaceId;

@@ -1,17 +1,20 @@
 from pathlib import Path
+import json
+import subprocess
 
 
 WEB = Path("frontend/web")
 HTML = "\n".join(path.read_text(encoding="utf-8") for path in (WEB / "index.html", *sorted(WEB.rglob("*.css")), *sorted(WEB.rglob("*.js"))))
+TRUST_REQUESTS = WEB / "app/trust-request-state.js"
 
 
-def test_trust_center_navigation_routes_and_tabs_exist() -> None:
+def test_trust_center_navigation_is_modal_local_and_has_tabs() -> None:
     for contract in (
         'id="trustNavButton"',
         'id="trustView"',
-        "#/trust/evals",
-        "#/trust/traces",
-        "#/trust/safety",
+        'openAdvancedWindow("trust", settingsReturnFocus)',
+        "function setTrustRoute(route)",
+        'advancedWindow.activeType() === "trust"',
         'id="trustEvalsTab"',
         'id="trustTracesTab"',
         'id="trustSafetyTab"',
@@ -56,6 +59,63 @@ def test_trust_center_calls_real_backend_endpoints() -> None:
         "renderTrustSafety",
     ):
         assert f"function {function_name}" in HTML
+
+
+def test_all_trust_read_loaders_bind_epoch_route_and_abort_ownership() -> None:
+    for loader in (
+        "loadTrustRunEvidence",
+        "loadTrustEvals",
+        "loadTrustTraces",
+        "loadTrustSafety",
+    ):
+        start = HTML.index(f"async function {loader}")
+        body = HTML[start : HTML.index("\n    }", start) + 6]
+        assert "const request = captureTrustRequest(overlayToken);" in body
+        assert "const trustRead = captureTrustRead(" in body
+        assert "signal: trustState.requestController.signal" in body
+        assert "isTrustReadCurrent(trustRead" in body
+
+
+def test_trust_read_ownership_rejects_same_route_stale_generations_and_selection() -> None:
+    module_url = TRUST_REQUESTS.resolve().as_uri()
+    harness = f'''
+import assert from "node:assert/strict";
+import * as trustRequests from {json.dumps(module_url)};
+
+const ownership = trustRequests.createTrustReadOwnership();
+const current = {{ overlay: "trust", overlayEpoch: 3, epoch: 7, route: "evals", apiBase: "http://api" }};
+for (const [lane, selection] of Object.entries({{
+  "run-evidence": "run-b",
+  traces: "case_id=case-b",
+  safety: "safety",
+  evals: "fixture",
+}})) {{
+  const first = ownership.capture({{ ...current, lane, selection }});
+  const second = ownership.capture({{ ...current, lane, selection }});
+  assert.ok(second.generation > first.generation);
+  assert.equal(ownership.isCurrent(first, {{ ...current, lane, selection }}), false);
+  assert.equal(ownership.isCurrent(second, {{ ...current, lane, selection }}), true);
+  assert.equal(ownership.isCurrent(second, {{ ...current, lane, selection: "different" }}), false);
+  assert.equal(ownership.isCurrent(second, {{ ...current, overlayEpoch: 4, lane, selection }}), false);
+}}
+assert.equal(typeof trustRequests.createTrustRunControlState, "function", "Trust exposes recoverable run-control state");
+const runControl = trustRequests.createTrustRunControlState();
+assert.equal(runControl.pending(), false);
+runControl.begin();
+assert.equal(runControl.pending(), true);
+runControl.settle();
+assert.equal(runControl.pending(), false, "a settled stale run cannot keep the next Evals view disabled");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "function syncTrustRunButton()" in HTML
+    assert "trustStartRunButton.disabled = trustRunControl.pending()" in HTML
+    assert "if (isTrustRequestCurrent(request)) trustStartRunButton.disabled = false" not in HTML
 
 
 def test_trust_center_does_not_render_static_success_or_mutate_gate_result() -> None:
