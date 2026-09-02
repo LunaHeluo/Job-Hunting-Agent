@@ -40,6 +40,10 @@ def test_fixture_baseline_runs_are_repeatable_and_reported() -> None:
     assert first["run_id"] == "fixture-baseline-a"
     assert second["run_id"] == "fixture-baseline-b"
     assert first["case_count"] >= 12
+    assert set(first["case_versions"]) == set(first["case_hashes"])
+    assert len(first["case_hashes"]) == first["case_count"]
+    assert first["case_versions"] == second["case_versions"]
+    assert first["case_hashes"] == second["case_hashes"]
     assert first["metrics"]["Task Success"]["denominator"] == first["case_count"]
     assert first["gate"]["status"] == "passed"
     assert first["trace_count"] >= first["case_count"]
@@ -48,14 +52,29 @@ def test_fixture_baseline_runs_are_repeatable_and_reported() -> None:
         store.get_case(item.case_id).layer
         for item in store.list_case_results(run_id=first["run_id"])
     }
-    assert layers == {
+    assert {
         "happy_path",
         "edge_case",
         "missing_information",
-        "tool_failure",
         "conflicting_context",
         "safety_adversarial",
-    }
+        "concurrency",
+    }.issubset(layers)
+    assert {
+        "routing",
+        "plan_validation",
+        "verification",
+        "recovery",
+        "budget",
+        "model_routing",
+        "context",
+        "task_mode",
+        "delegation",
+        "task_events",
+        "join",
+        "verifier_boundary",
+        "framework_boundary",
+    }.issubset(layers)
 
 
 def test_known_failure_cluster_blocks_gate_and_resolved_run_reruns_all_cases() -> None:

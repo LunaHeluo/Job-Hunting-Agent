@@ -13,6 +13,8 @@ def candidate(snippet: str = "") -> JobCandidate:
         url=URL,
         title="Staff Software Engineer",
         company="Example",
+        company_source="google_jobs",
+        company_confidence="high",
         location="Beijing",
         snippet=snippet,
         url_kind="organic",
@@ -64,6 +66,8 @@ async def test_http_json_ld_fallback_returns_verified_job() -> None:
     assert result.jobs[0]["title"] == "Staff Software Engineer"
     assert result.jobs[0]["retrieval_method"] == "http_json_ld"
     assert result.jobs[0]["source_url"] == URL
+    assert result.jobs[0]["company_source"] == "page_json_ld"
+    assert result.jobs[0]["company_confidence"] == "high"
 
 
 @pytest.mark.asyncio
@@ -74,6 +78,9 @@ async def test_failed_http_preserves_search_snippet_as_partial() -> None:
     assert result.jobs == ()
     assert result.partial_jobs[0]["retrieval_method"] == "search_snippet"
     assert result.partial_jobs[0]["validation_state"] == "partial_verified"
+    assert result.partial_jobs[0]["company"] == "Example"
+    assert result.partial_jobs[0]["company_source"] == "google_jobs"
+    assert result.partial_jobs[0]["company_confidence"] == "high"
     assert result.failures[0].error_code == "access_blocked_403"
 
 

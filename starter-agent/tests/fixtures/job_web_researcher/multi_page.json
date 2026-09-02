@@ -1,0 +1,22 @@
+{
+  "responses": [
+    {"tool": "search_jobs_serpapi", "arguments": {"query": "Agent Engineer Sydney", "limit": 3}},
+    {"tool": "mcp__playwright__browser_navigate", "arguments": {"url": "https://jobs.example.test/roles/agent-1?utm_source=fixture"}},
+    {"tool": "mcp__playwright__browser_wait_for", "arguments": {"time": 1}},
+    {"tool": "mcp__playwright__browser_snapshot", "arguments": {}},
+    {"tool": "mcp__playwright__browser_click", "arguments": {"element": "show-more", "ref": "details-1"}},
+    {"tool": "mcp__playwright__browser_snapshot", "arguments": {}},
+    {"tool": "mcp__playwright__browser_navigate", "arguments": {"url": "https://jobs.example.test/roles/agent-2"}},
+    {"tool": "mcp__playwright__browser_wait_for", "arguments": {"time": 1}},
+    {"tool": "mcp__playwright__browser_snapshot", "arguments": {}},
+    {"final": {
+      "jobs": [
+        {"title": "Agent Engineer", "company": "Example One", "location": "Sydney", "responsibilities": ["Build agent workflows"], "requirements": ["Python"], "source_url": "https://jobs.example.test/roles/agent-1?utm_source=fixture", "final_url": "https://jobs.example.test/roles/agent-1", "retrieved_at": "2026-08-12T00:00:00Z", "validation_state": "verified", "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "artifact_refs": ["artifact:one"]},
+        {"title": "Agent Engineer", "company": "Example One", "location": "Sydney", "responsibilities": ["Build agent workflows"], "requirements": ["Python"], "source_url": "https://jobs.example.test/roles/agent-1", "final_url": "https://jobs.example.test/roles/agent-1", "retrieved_at": "2026-08-12T00:00:00Z", "validation_state": "verified", "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "artifact_refs": ["artifact:one"]},
+        {"title": "Senior Agent Engineer", "company": "Example Two", "location": "Sydney", "responsibilities": ["Own agent platform"], "requirements": ["Python", "LLM systems"], "source_url": "https://jobs.example.test/roles/agent-2", "final_url": "https://jobs.example.test/roles/agent-2", "retrieved_at": "2026-08-12T00:00:00Z", "validation_state": "verified", "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "artifact_refs": ["artifact:two"]}
+      ],
+      "missing": [],
+      "errors": []
+    }}
+  ]
+}

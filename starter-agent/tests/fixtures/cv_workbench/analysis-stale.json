@@ -1,0 +1,40 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "analysis_id": "ma_demo_stale",
+  "workspace_id": "ws_demo",
+  "resume_version_id": "rv_backend_v1",
+  "resume_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "job_snapshot_id": "js_acme_v1",
+  "job_content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "status": "stale",
+  "rule_version": "match-rule.v1",
+  "validator_version": "result-validator.v1",
+  "total_score": 72.5,
+  "dimensions": [
+    {"name": "required_skills", "weight": 1.0, "score": 72.5}
+  ],
+  "requirements": [
+    {
+      "requirement_id": "req_python",
+      "original_text": "具备 Python 后端开发经验",
+      "category": "required",
+      "importance": 5,
+      "verdict": "matched",
+      "evidence": [
+        {
+          "chunk_id": "chunk-demo-1",
+          "source_ref": "resume-demo.md@v1#L10-L12",
+          "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "quote": "使用 Python 与 FastAPI 构建服务"
+        }
+      ],
+      "explanation": "这是旧输入版本上的有效证据，只用于历史查看。"
+    }
+  ],
+  "parent_run_id": "parent-run-demo",
+  "child_run_ids": ["child-run-evidence"],
+  "revision": 2,
+  "created_at": "2026-08-17T11:00:00+08:00",
+  "stale_reason": "resume_version_changed",
+  "allowed_actions": ["view", "reanalyze"]
+}

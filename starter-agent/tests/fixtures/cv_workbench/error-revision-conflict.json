@@ -1,0 +1,14 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "error": {
+    "code": "revision_conflict",
+    "message": "草稿已在其他位置更新，请比较后重试。",
+    "operation_id": "op_draft_save_demo",
+    "retryable": true,
+    "authoritative_revision": 7,
+    "recovery_action": "compare_draft",
+    "details": {
+      "resource": "resume_draft"
+    }
+  }
+}

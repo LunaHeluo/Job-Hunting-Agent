@@ -1,0 +1,18 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "operation_id": "op_analysis_demo",
+  "workspace_id": "ws_demo",
+  "operation_type": "create_match_analysis",
+  "idempotency_key": "analysis-demo-001",
+  "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expected_revision": 3,
+  "status": "commit_failed",
+  "parent_run_id": "parent-run-demo",
+  "task_id": null,
+  "result_object_id": null,
+  "error_code": "business_commit_failed",
+  "retryable": true,
+  "revision": 5,
+  "created_at": "2026-08-17T12:00:00+08:00",
+  "updated_at": "2026-08-17T12:01:00+08:00"
+}

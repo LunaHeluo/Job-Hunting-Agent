@@ -4,6 +4,7 @@ from uuid import uuid4
 from starter_agent.trust.smoke import (
     SMOKE_MODEL_INSTRUCTION,
     _trace,
+    _run_or_await_delegated_child,
     create_smoke_parent_run,
     expected_smoke_report_fields,
     select_smoke_candidates,
@@ -155,3 +156,92 @@ def test_explicit_smoke_url_must_be_https() -> None:
         limit=1,
         source_url="http://jobs.example.test/openings/probe",
     ) == ()
+
+
+async def test_smoke_observes_child_claimed_by_background_worker() -> None:
+    class Pool:
+        async def run_once(self, _worker_id):
+            return False
+
+    class Worker:
+        pool = Pool()
+
+    class Store:
+        def get_run_tree(self, _parent_run_id):
+            child = type("Child", (), {"id": "child:1", "status": "succeeded"})()
+            task = type(
+                "Task",
+                (),
+                {"id": "task:1", "accepted_result_envelope_ref": "artifact:result"},
+            )()
+            return type("Tree", (), {"child_runs": [child], "child_tasks": [task]})()
+
+    application = type(
+        "Application",
+        (),
+        {"delegation_worker": Worker(), "delegation_store": Store()},
+    )()
+    receipt = type(
+        "Receipt",
+        (),
+        {
+            "parent_run_id": "parent:1",
+            "child_run_id": "child:1",
+            "child_task_id": "task:1",
+        },
+    )()
+
+    tree = await _run_or_await_delegated_child(
+        application, receipt, worker_id="smoke", timeout_seconds=1
+    )
+
+    assert tree.child_runs[0].status == "succeeded"
+
+
+async def test_smoke_keeps_temporary_runtime_alive_for_bounded_child_retry() -> None:
+    state = {"status": "queued", "accepted": None, "attempts": 0}
+
+    class Pool:
+        async def run_once(self, _worker_id):
+            state["attempts"] += 1
+            if state["attempts"] == 1:
+                state["status"] = "queued"
+            else:
+                state["status"] = "partial"
+                state["accepted"] = "artifact:result"
+            return True
+
+    class Worker:
+        pool = Pool()
+
+    class Store:
+        def get_run_tree(self, _parent_run_id):
+            child = type("Child", (), {"id": "child:1", "status": state["status"]})()
+            task = type(
+                "Task",
+                (),
+                {"id": "task:1", "accepted_result_envelope_ref": state["accepted"]},
+            )()
+            return type("Tree", (), {"child_runs": [child], "child_tasks": [task]})()
+
+    application = type(
+        "Application",
+        (),
+        {"delegation_worker": Worker(), "delegation_store": Store()},
+    )()
+    receipt = type(
+        "Receipt",
+        (),
+        {
+            "parent_run_id": "parent:1",
+            "child_run_id": "child:1",
+            "child_task_id": "task:1",
+        },
+    )()
+
+    tree = await _run_or_await_delegated_child(
+        application, receipt, worker_id="smoke", timeout_seconds=1
+    )
+
+    assert state["attempts"] == 2
+    assert tree.child_runs[0].status == "partial"

@@ -195,9 +195,40 @@ async def test_google_jobs_result_has_source_time_and_no_secret() -> None:
     assert result.ok
     assert result.data["search_engine"] == "google_jobs"
     assert result.data["results"][0]["source"] == "serpapi_google_jobs"
+    assert result.data["results"][0]["company"] == "Example"
+    assert result.data["results"][0]["company_source"] == "google_jobs"
+    assert result.data["results"][0]["company_confidence"] == "high"
     assert result.data["results"][0]["retrieved_at"]
     assert result.data["results"][0]["url"] == "https://jobs.example/1?ref=public"
     assert secret not in result.model_dump_json()
+
+
+def test_organic_result_recovers_only_explicit_company_attribution() -> None:
+    rows = SearchJobsSerpApiTool._parse_google(
+        {
+            "organic_results": [
+                {
+                    "title": "AI Agent开发工程师招聘_成都恒合实业有限责任公司招聘",
+                    "link": "https://m.zhaopin.com/jobs/example.htm",
+                    "snippet": "成都岗位，负责智能体研发。",
+                },
+                {
+                    "title": "AI工程师招聘 - 猎聘",
+                    "link": "https://www.liepin.com/job/example.shtml",
+                    "snippet": "热门职位。",
+                    "source": "猎聘",
+                },
+            ]
+        },
+        "2026-08-02T00:00:00Z",
+    )
+
+    assert rows[0]["company"] == "成都恒合实业有限责任公司"
+    assert rows[0]["company_source"] == "organic_explicit"
+    assert rows[0]["company_confidence"] == "medium"
+    assert rows[1]["company"] == ""
+    assert rows[1]["company_source"] == ""
+    assert rows[1]["company_confidence"] == ""
 
 
 async def test_google_jobs_prefers_all_direct_apply_links_before_share_link() -> None:
