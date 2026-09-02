@@ -125,6 +125,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
   }
 
   async function renderResumePreview(workspaceId, versionId, label, sourceFilename = "") {
+    elements.main.className = "";
     elements.main.textContent = "正在加载简历预览…";
     try {
       const content = await request(`/v1/workbench/resume-versions/${encodeURIComponent(versionId)}/content?workspace_id=${encodeURIComponent(workspaceId)}`);
@@ -462,6 +463,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome }
     }
     if (profileName) profileName.textContent = home.recent_versions[0].label;
     if (profileCaption) profileCaption.textContent = `${home.recent_versions.length} 个档案版本`;
+    void request(`/v1/workbench/resume-versions/${encodeURIComponent(home.recent_versions[0].version_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`)
+      .then(content => updateProfileMetrics(content.markdown, content.profile))
+      .catch(() => updateProfileMetrics(""));
     if (route === "version-map") renderVersionMap(workspaceId, home.recent_versions[0].resume_id);
   }
 

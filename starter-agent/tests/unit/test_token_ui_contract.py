@@ -2,9 +2,13 @@ from pathlib import Path
 
 
 def test_frontend_displays_real_mock_and_budget_token_states() -> None:
-    html = (
-        Path(__file__).resolve().parents[2] / "src" / "web" / "index.html"
-    ).read_text(encoding="utf-8")
+    web = Path(__file__).resolve().parents[2]  / "frontend" / "web"
+    # The UI was split into HTML, JS and CSS modules; contracts span that bundle.
+    html = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(web.rglob("*"))
+        if path.suffix in {".html", ".js", ".css"}
+    )
 
     assert "tokens=${prompt}/${completion}/${total}" in html
     assert 'tokenText = "tokens=mock"' in html

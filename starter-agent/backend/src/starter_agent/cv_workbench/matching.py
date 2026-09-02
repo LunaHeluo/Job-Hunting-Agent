@@ -8,8 +8,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from hashlib import sha256
 import json
 import re
-import re
 from typing import Protocol
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,10 +39,12 @@ from starter_agent.cv_workbench.operations import (
     ValidationDecision,
 )
 from starter_agent.cv_workbench.store import ObjectNotFoundError, SQLiteWorkbenchStore
+from starter_agent.cv_workbench.tailoring_evidence import ResumeEvidenceSelector
+from starter_agent.knowledge.models import KnowledgeScope
 
 
-RULE_VERSION = "match-rule.v1"
-VALIDATOR_VERSION = "match-result-validator.v1"
+RULE_VERSION = "match-rule.v2"
+VALIDATOR_VERSION = "match-result-validator.v2"
 CATEGORY_WEIGHTS = {
     "required": Decimal("0.60"),
     "responsibility": Decimal("0.25"),
@@ -64,11 +66,12 @@ def deterministic_requirements(
     resume_text: str,
     job_text: str,
     *,
-    evidence: EvidenceReference,
+    selector: ResumeEvidenceSelector,
+    scope: KnowledgeScope,
+    knowledge_base_id: UUID,
+    document_id: UUID,
 ) -> tuple[CandidateRequirement, ...]:
-    """Build conservative local candidates; only exact token overlap is positive."""
-    resume_folded = " ".join(resume_text.casefold().split())
-    resume_lines = [" ".join(line.split()) for line in resume_text.splitlines() if line.strip()]
+    """Build requirements whose positive verdicts have scoped chunk evidence."""
     output: list[CandidateRequirement] = []
     seen: set[str] = set()
     for raw in job_text.splitlines():
@@ -77,19 +80,6 @@ def deterministic_requirements(
             continue
         seen.add(text.casefold())
         folded = text.casefold()
-        tokens = [
-            token
-            for token in re.findall(r"[a-z][a-z0-9+#.\-]{1,}|[\u4e00-\u9fff]{2,}", folded)
-            if token not in {"负责", "参与", "要求", "岗位", "工作", "能力", "经验", "熟悉", "掌握"}
-        ]
-        matched = [token for token in tokens if token in resume_folded]
-        ratio = len(matched) / max(1, len(tokens))
-        if matched and ratio >= 0.5:
-            verdict = "matched"
-        elif matched:
-            verdict = "partial"
-        else:
-            verdict = "missing"
         category = (
             "preferred"
             if any(word in folded for word in ("preferred", "plus", "优先", "加分"))
@@ -97,88 +87,35 @@ def deterministic_requirements(
             if any(word in folded for word in ("responsib", "负责", "职责"))
             else "required"
         )
-        quote = next(
-            (line for line in resume_lines if any(token in line.casefold() for token in matched)),
-            None,
+        selection = selector.select(
+            text,
+            scope=scope,
+            knowledge_base_id=knowledge_base_id,
+            document_id=document_id,
+            markdown=resume_text,
         )
-        refs = (
-            (evidence.model_copy(update={"quote": (quote or "")[:1000]}),)
-            if verdict in {"matched", "partial"}
-            else ()
+        covered_count = sum(
+            term in selection.covered_terms for term in selection.query_terms
         )
-        explanation = (
-            f"在已授权简历证据中找到：{', '.join(matched[:8])}。"
-            if refs
-            else "未在已授权简历证据中找到可验证内容；该缺口不会自动写入简历。"
-        )
-        output.append(
-            CandidateRequirement(
-                original_text=text[:5000],
-                category=category,
-                importance=3 if category == "required" else 2,
-                verdict=verdict,
-                evidence=refs,
-                explanation=explanation,
+        coverage = covered_count / max(1, len(selection.query_terms))
+        if not selection.evidence:
+            verdict = RequirementVerdict.MISSING
+            refs: tuple[EvidenceReference, ...] = ()
+            explanation = (
+                "未在当前简历的已授权证据中找到可验证内容；"
+                "该缺口不会自动写入简历。"
             )
-        )
-        if len(output) >= 30:
-            break
-    if not output:
-        raise MatchServiceError("job_requirements_not_detected")
-    return tuple(output)
-
-
-def deterministic_requirements(
-    resume_text: str,
-    job_text: str,
-    *,
-    evidence: EvidenceReference,
-) -> tuple[CandidateRequirement, ...]:
-    """Build conservative local candidates; only exact token overlap is positive."""
-    resume_folded = " ".join(resume_text.casefold().split())
-    resume_lines = [" ".join(line.split()) for line in resume_text.splitlines() if line.strip()]
-    output: list[CandidateRequirement] = []
-    seen: set[str] = set()
-    for raw in job_text.splitlines():
-        text = re.sub(r"^[\s#>*+\-\d.)、]+", "", raw).strip()
-        if len(text) < 4 or text.casefold() in seen:
-            continue
-        seen.add(text.casefold())
-        folded = text.casefold()
-        tokens = [
-            token
-            for token in re.findall(r"[a-z][a-z0-9+#.\-]{1,}|[\u4e00-\u9fff]{2,}", folded)
-            if token not in {"负责", "参与", "要求", "岗位", "工作", "能力", "经验", "熟悉", "掌握"}
-        ]
-        matched = [token for token in tokens if token in resume_folded]
-        ratio = len(matched) / max(1, len(tokens))
-        if matched and ratio >= 0.5:
-            verdict = "matched"
-        elif matched:
-            verdict = "partial"
         else:
-            verdict = "missing"
-        category = (
-            "preferred"
-            if any(word in folded for word in ("preferred", "plus", "优先", "加分"))
-            else "responsibility"
-            if any(word in folded for word in ("responsib", "负责", "职责"))
-            else "required"
-        )
-        quote = next(
-            (line for line in resume_lines if any(token in line.casefold() for token in matched)),
-            None,
-        )
-        refs = (
-            (evidence.model_copy(update={"quote": (quote or "")[:1000]}),)
-            if verdict in {"matched", "partial"}
-            else ()
-        )
-        explanation = (
-            f"在已授权简历证据中找到：{', '.join(matched[:8])}。"
-            if refs
-            else "未在已授权简历证据中找到可验证内容；该缺口不会自动写入简历。"
-        )
+            verdict = (
+                RequirementVerdict.MATCHED
+                if coverage >= 0.60
+                else RequirementVerdict.PARTIAL
+            )
+            refs = selection.evidence
+            explanation = (
+                f"当前简历的 {len(refs)} 条证据覆盖核心词 "
+                f"{covered_count}/{len(selection.query_terms)}。"
+            )
         output.append(
             CandidateRequirement(
                 original_text=text[:5000],

@@ -187,6 +187,54 @@ def test_jobs_worldwide_path_is_a_collection_even_with_job_like_title() -> None:
     assert assessment.reason_codes == ("collection_page_shape",)
 
 
+def test_candidate_ranking_rejects_social_documents_and_paginated_job_lists() -> None:
+    ranked = rank_job_candidates(
+        [
+            {
+                "url": "https://www.instagram.com/p/example/",
+                "title": "AI Agent hiring",
+                "url_kind": "organic",
+                "provider_position": 1,
+            },
+            {
+                "url": "https://example.test/listing.pdf",
+                "title": "AI Agent roles",
+                "url_kind": "organic",
+                "provider_position": 2,
+            },
+            {
+                "url": "https://board.example/jobs/engineering?page=4",
+                "title": "Engineering jobs",
+                "url_kind": "organic",
+                "provider_position": 3,
+            },
+            {
+                "url": "https://board.example/search-asp-jobs-china",
+                "title": "Asp jobs",
+                "url_kind": "organic",
+                "provider_position": 4,
+            },
+            {
+                "url": "https://board.example/job/16873278/sap-architect/",
+                "title": "Browse IT Jobs",
+                "url_kind": "organic",
+                "provider_position": 5,
+            },
+            {
+                "url": "https://employer.example/careers/job/agent-engineer-1234",
+                "title": "AI Agent Engineer",
+                "url_kind": "organic",
+                "provider_position": 6,
+            },
+        ],
+        limit=5,
+    )
+
+    assert [item.url for item in ranked] == [
+        "https://employer.example/careers/job/agent-engineer-1234"
+    ]
+
+
 def test_collection_pages_do_not_consume_the_candidate_limit() -> None:
     rows = [
         {
@@ -432,6 +480,96 @@ def test_candidate_ranking_merges_query_and_engine_provenance_by_url() -> None:
         "Shenzhen AI Agent Engineer jobs",
     )
     assert ranked[0].search_engines == ("google", "google_jobs")
+
+
+def test_candidate_merge_keeps_strongest_company_attribution_for_same_url() -> None:
+    ranked = rank_job_candidates(
+        [
+            {
+                "title": "AI Agent Engineer",
+                "company": "Search Guess",
+                "company_source": "organic_explicit",
+                "company_confidence": "medium",
+                "url": "https://careers.example.test/jobs/42?ref=search",
+                "url_kind": "organic",
+                "provider_position": 0,
+            },
+            {
+                "title": "AI Agent Engineer",
+                "company": "Official Employer",
+                "company_source": "google_jobs",
+                "company_confidence": "high",
+                "url": "https://careers.example.test/jobs/42?ref=search",
+                "url_kind": "organic",
+                "provider_position": 1,
+            },
+        ],
+        limit=5,
+    )
+
+    assert len(ranked) == 1
+    assert ranked[0].company == "Official Employer"
+    assert ranked[0].company_source == "google_jobs"
+    assert ranked[0].company_confidence == "high"
+
+
+def test_weak_organic_attribution_does_not_replace_legacy_structured_company() -> None:
+    ranked = rank_job_candidates(
+        [
+            {
+                "title": "AI Agent Engineer",
+                "company": "Official Employer",
+                "url": "https://careers.example.test/jobs/43",
+                "url_kind": "structured_apply",
+                "provider_position": 0,
+            },
+            {
+                "title": "AI Agent Engineer",
+                "company": "Search Guess",
+                "company_source": "organic_explicit",
+                "company_confidence": "medium",
+                "url": "https://careers.example.test/jobs/43",
+                "url_kind": "organic",
+                "provider_position": 1,
+            },
+        ],
+        limit=5,
+    )
+
+    assert len(ranked) == 1
+    assert ranked[0].company == "Official Employer"
+    assert ranked[0].url_kind == "structured_apply"
+
+
+def test_company_attribution_has_meaningful_but_bounded_ranking_effect() -> None:
+    ranked = rank_job_candidates(
+        [
+            {
+                "title": "AI Agent Engineer Beijing",
+                "company": "Official Employer",
+                "company_source": "google_jobs",
+                "company_confidence": "high",
+                "url": "https://one.example.test/jobs/agent-engineer-42",
+                "url_kind": "organic",
+                "provider_position": 5,
+                "snippet": "Responsibilities and requirements for this role.",
+            },
+            {
+                "title": "AI Agent Engineer Beijing",
+                "url": "https://two.example.test/jobs/agent-engineer-43",
+                "url_kind": "organic",
+                "provider_position": 0,
+                "snippet": "Responsibilities and requirements for this role.",
+            },
+        ],
+        limit=5,
+        location_aliases=("Beijing",),
+    )
+
+    assert ranked[0].company == "Official Employer"
+    assert "company_attribution_high" in ranked[0].reason_codes
+    assert "company_unattributed" in ranked[1].reason_codes
+    assert ranked[0].score - ranked[1].score >= 0.15
 
 
 def test_local_chinese_detail_ranks_before_non_target_english_aggregator() -> None:

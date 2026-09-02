@@ -21,6 +21,7 @@ from starter_agent.cv_workbench.contracts import (
     Job,
     JobSnapshot,
     MatchAnalysis,
+    MatchStatus,
     MergeDecisionType,
     MergeProposal,
     Resume,
@@ -28,6 +29,7 @@ from starter_agent.cv_workbench.contracts import (
     ResumeDraft,
     ResumeVersion,
     Suggestion,
+    SuggestionStatus,
     VersionViewPreference,
     Workspace,
 )
@@ -49,6 +51,7 @@ from starter_agent.cv_workbench.jd_ingestion import (
 from starter_agent.cv_workbench.matching import (
     AnalyzeCommand,
     CandidateRequirement,
+    RULE_VERSION,
     deterministic_requirements,
 )
 from starter_agent.cv_workbench.resume_import import ResumeImportCommand
@@ -63,6 +66,7 @@ from starter_agent.cv_workbench.store import (
     WorkbenchStoreError,
 )
 from starter_agent.cv_workbench.suggestions import SuggestionCommand
+from starter_agent.cv_workbench.tailoring import TailoringCommand
 from starter_agent.cv_workbench.versioning import BlockPatch, VersioningError
 from starter_agent.cv_workbench.workspaces import (
     CreateWorkspaceCommand,
@@ -72,6 +76,7 @@ from starter_agent.interfaces.capabilities_api import (
     ManagementPrincipal,
     get_management_principal,
 )
+from starter_agent.knowledge.models import KnowledgeScope
 
 
 class ApiModel(BaseModel):
@@ -228,6 +233,13 @@ class SuggestionDecisionBody(ApiModel):
 class SuggestionGenerateBody(ApiModel):
     workspace_id: str
     draft_id: str
+
+
+class SuggestionBatchDecisionBody(ApiModel):
+    workspace_id: str
+    accept_ids: tuple[str, ...] = ()
+    reject_ids: tuple[str, ...] = ()
+    edited_text_by_id: dict[str, str] = Field(default_factory=dict)
 
 
 class MergeProposalBody(ApiModel):
@@ -403,6 +415,13 @@ def _translate(error: Exception) -> WorkbenchApiError:
     if isinstance(error, ReferenceConflictError):
         return WorkbenchApiError("reference_conflict", str(error), status_code=409)
     code = getattr(error, "code", None) or type(error).__name__.casefold()
+    if code == "tailoring_analysis_upgrade_required":
+        return WorkbenchApiError(
+            str(code),
+            "Evidence matching has been upgraded; reanalyze once before tailoring.",
+            status_code=409,
+            recovery_action="reanalyze_with_current_rule",
+        )
     return WorkbenchApiError(str(code), str(error), status_code=422)
 
 
@@ -824,19 +843,47 @@ def create_workbench_router(
         subject = principal(actor); runtime = runtime_provider()
         version = _call(runtime.store.get, ResumeVersion, body.resume_version_id, principal=subject)
         snapshot = _call(runtime.store.get, JobSnapshot, body.job_snapshot_id, principal=subject)
+        _call(runtime.store.assert_entity_in_workspace, version.version_id, body.workspace_id, principal=subject)
+        _call(runtime.store.assert_entity_in_workspace, snapshot.snapshot_id, body.workspace_id, principal=subject)
+        reusable = tuple(
+            item
+            for item in _all(runtime, MatchAnalysis, subject)
+            if item.workspace_id == body.workspace_id
+            and item.resume_version_id == version.version_id
+            and item.resume_content_sha256 == version.content.content_sha256
+            and item.job_snapshot_id == snapshot.snapshot_id
+            and item.job_content_sha256 == snapshot.content.content_sha256
+            and item.rule_version == RULE_VERSION
+            and item.status in {MatchStatus.VALIDATED, MatchStatus.PARTIAL}
+        )
+        if reusable:
+            analysis = max(
+                reusable,
+                key=lambda item: (item.created_at, item.analysis_id),
+            )
+            return analysis.model_dump(mode="json") | {
+                "reused": True,
+                "rule_upgrade_required": False,
+            }
         resume_text = _call(runtime.versions.content.read, version.content, principal=subject, workspace_id=body.workspace_id)
         job_text = _call(runtime.versions.content.read, snapshot.content, principal=subject, workspace_id=body.workspace_id)
         if not (version.content.knowledge_base_id and version.content.document_id and version.content.document_version_id):
             raise WorkbenchApiError("resume_evidence_not_published", "Confirmed resume evidence is unavailable.", status_code=409)
-        from starter_agent.cv_workbench.contracts import EvidenceReference
-        evidence = EvidenceReference(
-            chunk_id=version.version_id,
-            source_ref=f"knowledge://{version.content.knowledge_base_id}/{version.content.document_id}/{version.content.document_version_id}",
-            content_sha256=version.content.content_sha256,
+        requirements = _call(
+            deterministic_requirements,
+            resume_text,
+            job_text,
+            selector=runtime.evidence_selector,
+            scope=KnowledgeScope(user_id=subject, project_id=body.workspace_id),
+            knowledge_base_id=UUID(version.content.knowledge_base_id),
+            document_id=UUID(version.content.document_id),
         )
-        requirements = _call(deterministic_requirements, resume_text, job_text, evidence=evidence)
         command = AnalyzeCommand(**body.model_dump(), requirements=requirements, complete=True)
-        return _call(runtime.matches.analyze, command, principal=subject)
+        analysis = _call(runtime.matches.analyze, command, principal=subject)
+        return analysis.model_dump(mode="json") | {
+            "reused": False,
+            "rule_upgrade_required": False,
+        }
 
     @router.get("/match-analyses")
     def list_matches(workspace_id: str, limit: int = 50, cursor: str | None = None, actor: ManagementPrincipal = Depends(get_management_principal)):
@@ -871,6 +918,96 @@ def create_workbench_router(
             principal=principal(actor),
         )
         return {"items": values}
+
+    @router.post(
+        "/match-analyses/{analysis_id}/tailored-resume-candidates",
+        status_code=201,
+    )
+    async def generate_tailored_resume(
+        analysis_id: str,
+        body: SuggestionGenerateBody,
+        actor: ManagementPrincipal = Depends(get_management_principal),
+    ):
+        runtime = runtime_provider()
+        if runtime.tailoring is None:
+            raise WorkbenchApiError(
+                "tailoring_provider_unavailable",
+                "AI tailoring is not configured.",
+                status_code=503,
+                recovery_action="configure_model_provider",
+            )
+        try:
+            return await runtime.tailoring.generate_candidates(
+                TailoringCommand(
+                    workspace_id=body.workspace_id,
+                    analysis_id=analysis_id,
+                    draft_id=body.draft_id,
+                ),
+                principal=principal(actor),
+            )
+        except WorkbenchApiError:
+            raise
+        except (WorkbenchStoreError, VersioningError, ValueError, RuntimeError) as error:
+            raise _translate(error) from error
+
+    @router.post("/suggestions/batch-decisions")
+    def decide_suggestions_batch(
+        body: SuggestionBatchDecisionBody,
+        actor: ManagementPrincipal = Depends(get_management_principal),
+    ):
+        subject = principal(actor)
+        runtime = runtime_provider()
+        accept_ids = tuple(body.accept_ids)
+        reject_ids = tuple(body.reject_ids)
+        all_ids = accept_ids + reject_ids
+        if (
+            not all_ids
+            or len(set(all_ids)) != len(all_ids)
+            or not set(body.edited_text_by_id).issubset(accept_ids)
+        ):
+            raise WorkbenchApiError(
+                "invalid_suggestion_batch",
+                "Suggestion IDs must be unique and edits may target accepted IDs only.",
+            )
+        suggestions = tuple(
+            _call(runtime.store.get, Suggestion, item, principal=subject)
+            for item in all_ids
+        )
+        if any(item.status != SuggestionStatus.PENDING for item in suggestions):
+            raise WorkbenchApiError(
+                "suggestion_not_pending",
+                "All selected suggestions must still be pending.",
+                status_code=409,
+                recovery_action="reload_suggestions",
+            )
+        for item in suggestions:
+            _call(
+                runtime.store.assert_entity_in_workspace,
+                item.target_draft_id,
+                body.workspace_id,
+                principal=subject,
+            )
+
+        batch = None
+        if accept_ids:
+            batch = _call(
+                runtime.suggestions.apply_batch,
+                accept_ids,
+                workspace_id=body.workspace_id,
+                principal=subject,
+                edited_text_by_id=body.edited_text_by_id,
+                preserve_pending_ids=reject_ids,
+            )
+        rejected = tuple(
+            _call(runtime.suggestions.reject, item, principal=subject)
+            for item in reject_ids
+        )
+        return {
+            "draft": batch.draft if batch is not None else None,
+            "accepted_ids": batch.accepted_ids if batch is not None else (),
+            "rejected_ids": tuple(item.suggestion_id for item in rejected),
+            "invalidated_ids": batch.invalidated_ids if batch is not None else (),
+        }
 
     @router.post("/suggestions/{suggestion_id}/decisions")
     def decide_suggestion(suggestion_id: str, body: SuggestionDecisionBody, actor: ManagementPrincipal = Depends(get_management_principal)):

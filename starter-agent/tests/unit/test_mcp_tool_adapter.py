@@ -243,6 +243,7 @@ def test_adapter_preserves_mcp_error_without_exposing_upstream_secret_metadata()
             "Target page, context or browser has been closed",
             "browser_crashed",
         ),
+        ("No open pages available.", "browser_no_open_page"),
         ("unexpected upstream failure", "mcp_unknown_error"),
     ],
 )

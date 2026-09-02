@@ -1,11 +1,106 @@
 import asyncio
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from starter_agent.bootstrap import create_application, get_settings
 from starter_agent.interfaces.api import create_api
 from starter_agent.tools.email.models import DraftCreateRequest
+from starter_agent.delegation.store import RevisionConflictError
+from starter_agent.interfaces.capabilities_api import ManagementPrincipal, get_management_principal
+
+
+def test_resume_delegated_child_api_returns_controlled_receipt(monkeypatch) -> None:
+    from types import SimpleNamespace
+    import starter_agent.interfaces.api as api_module
+
+    class Application:
+        async def wait_for_background_tasks(self):
+            return None
+
+        def resume_delegated_child(self, **authority):
+            assert authority == {
+                "parent_run_id": "parent:1", "child_task_id": "task:1",
+                "child_run_id": "child:1", "checkpoint_ref": "checkpoint:1",
+                "principal": "user:1",
+            }
+            return SimpleNamespace(
+                id="child:1", status="queued", phase="open", version=7,
+                run_context_checkpoint_ref="checkpoint:1",
+            )
+
+    monkeypatch.setattr(api_module, "create_application", lambda: Application())
+    monkeypatch.setattr(api_module, "create_mcp_manager", lambda: (_ for _ in ()).throw(RuntimeError("disabled")))
+    api = api_module.create_api()
+    api.dependency_overrides[get_management_principal] = lambda: ManagementPrincipal(subject="user:1", role="operator")
+    with TestClient(api) as client:
+        response = client.post("/v1/runs/delegated/resume", json={
+            "parent_run_id": "parent:1", "child_task_id": "task:1",
+            "child_run_id": "child:1", "checkpoint_ref": "checkpoint:1",
+        })
+    assert response.status_code == 200
+    assert response.json() == {
+        "child_run_id": "child:1", "status": "queued", "phase": "open",
+        "version": 7, "checkpoint_ref": "checkpoint:1",
+    }
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "code"),
+    [
+        (ValueError("handoff_checkpoint_authority_mismatch"), 403, "delegation_resume_unauthorized"),
+        (TimeoutError("job_web_handoff_timeout"), 410, "delegation_resume_expired"),
+        (RevisionConflictError("conflict"), 409, "delegation_resume_conflict"),
+        (RuntimeError("delegation_resume_unavailable"), 409, "delegation_resume_state_invalid"),
+    ],
+)
+def test_resume_delegated_child_api_maps_safe_errors(monkeypatch, error, status_code, code) -> None:
+    import starter_agent.interfaces.api as api_module
+
+    class Application:
+        async def wait_for_background_tasks(self):
+            return None
+
+        def resume_delegated_child(self, **_authority):
+            raise error
+
+    monkeypatch.setattr(api_module, "create_application", lambda: Application())
+    monkeypatch.setattr(api_module, "create_mcp_manager", lambda: (_ for _ in ()).throw(RuntimeError("disabled")))
+    api = api_module.create_api()
+    api.dependency_overrides[get_management_principal] = lambda: ManagementPrincipal(subject="user:1", role="operator")
+    with TestClient(api) as client:
+        response = client.post("/v1/runs/delegated/resume", json={
+            "parent_run_id": "parent:1", "child_task_id": "task:1",
+            "child_run_id": "child:1", "checkpoint_ref": "checkpoint:1",
+        })
+    assert response.status_code == status_code
+    assert response.json()["detail"]["code"] == code
+
+
+def test_resume_delegated_child_rejects_anonymous_and_forged_body_principal(monkeypatch) -> None:
+    import starter_agent.interfaces.api as api_module
+
+    class Application:
+        async def wait_for_background_tasks(self): return None
+        def resume_delegated_child(self, **_authority): raise AssertionError("must not resume")
+
+    monkeypatch.setattr(api_module, "create_application", lambda: Application())
+    monkeypatch.setattr(api_module, "create_mcp_manager", lambda: (_ for _ in ()).throw(RuntimeError("disabled")))
+    api = api_module.create_api()
+    api.dependency_overrides[get_management_principal] = lambda: ManagementPrincipal(subject="anonymous", role="viewer")
+    with TestClient(api) as client:
+        unauthenticated = client.post("/v1/runs/delegated/resume", json={
+            "parent_run_id":"parent:1", "child_task_id":"task:1",
+            "child_run_id":"child:1", "checkpoint_ref":"checkpoint:1",
+        })
+        forged = client.post("/v1/runs/delegated/resume", json={
+            "parent_run_id":"parent:1", "child_task_id":"task:1",
+            "child_run_id":"child:1", "checkpoint_ref":"checkpoint:1",
+            "principal":"victim",
+        })
+    assert unauthenticated.status_code == 401
+    assert forged.status_code in {401, 422}
 
 
 def test_health() -> None:

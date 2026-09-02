@@ -20,7 +20,7 @@ from starter_agent.tools.registry import ToolRegistry
 
 
 SKILLS_ROOT = (
-    Path(__file__).parents[2] / "src" / "starter_agent" / "skills"
+    Path(__file__).parents[2]  / "backend" / "src" / "starter_agent" / "skills"
 )
 
 
@@ -32,7 +32,7 @@ def test_job_research_definition_contains_fixed_governed_workflow():
     assert snapshot.stale is False
     assert skill is not None
     assert skill.source_path.endswith(
-        "src/starter_agent/skills/job-research/SKILL.md"
+        "backend/src/starter_agent/skills/job-research/SKILL.md"
     )
     assert skill.enabled is True
     assert skill.version == "1.3.0"
@@ -238,7 +238,7 @@ def test_context_has_light_catalog_until_a_skill_is_triggered(tmp_path: Path):
 
 
 class _ScriptedCandidateOrchestrator(JobResearchOrchestrator):
-    def __init__(self) -> None:
+    def __init__(self, *, snapshot_company: str = "Example") -> None:
         async def no_sleep(_seconds: float) -> None:
             return None
 
@@ -251,6 +251,7 @@ class _ScriptedCandidateOrchestrator(JobResearchOrchestrator):
         self.calls: list[tuple[str, dict]] = []
         self.audited_attempts: list[tuple[dict, str]] = []
         self.snapshot_count = 0
+        self.snapshot_company = snapshot_company
 
     def _audit_candidate_attempt(self, attempt, *, context, call_id):
         del context
@@ -286,7 +287,7 @@ class _ScriptedCandidateOrchestrator(JobResearchOrchestrator):
                     ok=True,
                     data={
                         "title": "Agent Engineer",
-                        "company": "Example",
+                        "company": self.snapshot_company,
                         "location": "Berlin",
                         "responsibilities": ["Build agents"],
                         "requirements": ["Python"],
@@ -365,6 +366,8 @@ async def test_candidate_failure_continues_and_resume_evidence_is_read_once():
     assert all(item["truncated"] is False for item in result.data["candidate_attempts"])
     assert all(item["duration_ms"] >= 0 for item in result.data["candidate_attempts"])
     assert result.data["job"]["source_url"] == candidates[1].url
+    assert result.data["job"]["company_source"] == "page_html"
+    assert result.data["job"]["company_confidence"] == "high"
     assert len(result.data["jobs"]) == 1
     assert [name for name, _ in orchestrator.calls].count(
         orchestrator.evidence_tool_name
@@ -381,6 +384,42 @@ async def test_candidate_failure_continues_and_resume_evidence_is_read_once():
         "browser_failed",
         "succeeded",
     ]
+
+
+@pytest.mark.asyncio
+async def test_browser_success_preserves_trusted_candidate_company_when_page_omits_it():
+    orchestrator = _ScriptedCandidateOrchestrator(snapshot_company="")
+    candidates = (
+        JobCandidate(
+            url="https://jobs.example.test/listing",
+            title="Search results",
+            url_kind="organic",
+            confidence=0.4,
+            provider_position=0,
+        ),
+        JobCandidate(
+            url="https://employer.example.test/jobs/42",
+            title="Agent Engineer",
+            company="Official Employer",
+            company_source="google_jobs",
+            company_confidence="high",
+            url_kind="structured_apply",
+            confidence=1.0,
+            provider_position=1,
+        ),
+    )
+
+    result = await orchestrator.analyze_candidates(
+        query="Berlin Agent Engineer",
+        candidates=candidates,
+        context=ToolContext(session_id=uuid4(), turn_id=uuid4()),
+        target_count=1,
+        resume_evidence=[],
+    )
+
+    assert result.data["jobs"][0]["company"] == "Official Employer"
+    assert result.data["jobs"][0]["company_source"] == "google_jobs"
+    assert result.data["jobs"][0]["company_confidence"] == "high"
     assert [item[1] for item in orchestrator.audited_attempts] == [
         "call-8",
         "call-12",

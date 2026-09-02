@@ -42,7 +42,7 @@ def _assert_serpapi_contract_matches_source(audit: str) -> None:
 
 def _declared_tool_names() -> set[str]:
     names: set[str] = set()
-    tools_root = PROJECT_ROOT / "src" / "starter_agent" / "tools"
+    tools_root = PROJECT_ROOT  / "backend" / "src" / "starter_agent" / "tools"
     for path in tools_root.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -81,7 +81,7 @@ def _project_skill_definitions() -> list[Path]:
 
 def _source_class_names() -> set[str]:
     names: set[str] = set()
-    source_root = PROJECT_ROOT / "src" / "starter_agent"
+    source_root = PROJECT_ROOT  / "backend" / "src" / "starter_agent"
     for path in source_root.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         names.update(
@@ -93,15 +93,15 @@ def _source_class_names() -> set[str]:
 def test_job_research_audit_links_to_real_repository_files() -> None:
     audit = _audit_text()
     required_source_paths = (
-        "src/starter_agent/settings.py",
-        "src/starter_agent/bootstrap.py",
-        "src/starter_agent/tools/registry.py",
-        "src/starter_agent/tools/base.py",
-        "src/starter_agent/tools/policy.py",
-        "src/starter_agent/agent/runtime.py",
-        "src/starter_agent/interfaces/api.py",
-        "src/starter_agent/observability/logging.py",
-        "src/web/index.html",
+        "backend/src/starter_agent/settings.py",
+        "backend/src/starter_agent/bootstrap.py",
+        "backend/src/starter_agent/tools/registry.py",
+        "backend/src/starter_agent/tools/base.py",
+        "backend/src/starter_agent/tools/policy.py",
+        "backend/src/starter_agent/agent/runtime.py",
+        "backend/src/starter_agent/interfaces/api.py",
+        "backend/src/starter_agent/observability/logging.py",
+        "frontend/web/index.html",
     )
 
     for source_path in required_source_paths:
@@ -163,8 +163,7 @@ def test_implemented_dependencies_match_project_scope() -> None:
     assert registry.get(evidence_tool) is None
     assert _project_skill_definitions() == [
         PROJECT_ROOT
-        / "src"
-        / "starter_agent"
+         / "backend" / "src" / "starter_agent"
         / "skills"
         / "job-research"
         / "SKILL.md"
@@ -188,17 +187,17 @@ def test_serpapi_source_comparison_detects_documented_schema_drift() -> None:
 def test_trust_layer_task1_audit_captures_current_runtime_and_gaps() -> None:
     audit = _audit_text()
     required_current_entries = (
-        "src/starter_agent/agent/runtime.py",
-        "src/starter_agent/application.py",
-        "src/starter_agent/agent/context.py",
-        "src/starter_agent/capabilities/registry.py",
-        "src/starter_agent/mcp/manager.py",
-        "src/starter_agent/skills/registry.py",
-        "src/starter_agent/capabilities/gate.py",
-        "src/starter_agent/capabilities/store.py",
-        "src/starter_agent/infrastructure/session_store.py",
-        "src/starter_agent/observability/logging.py",
-        "src/web/index.html",
+        "backend/src/starter_agent/agent/runtime.py",
+        "backend/src/starter_agent/application.py",
+        "backend/src/starter_agent/agent/context.py",
+        "backend/src/starter_agent/capabilities/registry.py",
+        "backend/src/starter_agent/mcp/manager.py",
+        "backend/src/starter_agent/skills/registry.py",
+        "backend/src/starter_agent/capabilities/gate.py",
+        "backend/src/starter_agent/capabilities/store.py",
+        "backend/src/starter_agent/infrastructure/session_store.py",
+        "backend/src/starter_agent/observability/logging.py",
+        "frontend/web/index.html",
         "model.context.snapshot",
         "gate.evaluated",
         "tool.started",

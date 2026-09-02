@@ -1,0 +1,44 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "proposal_id": "mp_backend_sync_1",
+  "resume_id": "res_demo",
+  "target_branch_id": "rb_backend",
+  "base_version_id": "rv_master_v1",
+  "upstream_version_id": "rv_master_v2",
+  "target_version_id": "rv_backend_v1",
+  "base_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "upstream_content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "target_content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "decisions": [
+    {
+      "block_id": "blk_summary",
+      "decision": "accept_upstream",
+      "base_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "upstream_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "target_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "result_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "manual_content": null,
+      "decided_by": "local-user",
+      "decided_at": "2026-08-17T10:01:00+08:00"
+    },
+    {
+      "block_id": "blk_project_agent",
+      "decision": "unresolved",
+      "base_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "upstream_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "target_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "result_sha256": null,
+      "manual_content": null,
+      "decided_by": null,
+      "decided_at": null
+    }
+  ],
+  "status": "conflicted",
+  "revision": 1,
+  "operation_id": null,
+  "result_version_id": null,
+  "created_by": "local-user",
+  "created_at": "2026-08-17T10:00:00+08:00",
+  "updated_at": "2026-08-17T10:01:00+08:00",
+  "allowed_actions": ["decide_item", "cancel"]
+}

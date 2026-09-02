@@ -1,0 +1,50 @@
+{
+  "contract_version": "cv-workbench.v1",
+  "analysis_id": "ma_demo_validated",
+  "workspace_id": "ws_demo",
+  "resume_version_id": "rv_backend_v1",
+  "resume_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "job_snapshot_id": "js_acme_v1",
+  "job_content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "status": "validated",
+  "rule_version": "match-rule.v1",
+  "validator_version": "result-validator.v1",
+  "total_score": 72.5,
+  "dimensions": [
+    {"name": "required_skills", "weight": 0.7, "score": 75.0},
+    {"name": "preferred_skills", "weight": 0.3, "score": 66.666667}
+  ],
+  "requirements": [
+    {
+      "requirement_id": "req_python",
+      "original_text": "具备 Python 后端开发经验",
+      "category": "required",
+      "importance": 5,
+      "verdict": "matched",
+      "evidence": [
+        {
+          "chunk_id": "chunk-demo-1",
+          "source_ref": "resume-demo.md@v1#L10-L12",
+          "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "quote": "使用 Python 与 FastAPI 构建服务"
+        }
+      ],
+      "explanation": "简历存在直接、可引用的后端开发证据。"
+    },
+    {
+      "requirement_id": "req_kubernetes",
+      "original_text": "熟悉 Kubernetes",
+      "category": "preferred",
+      "importance": 2,
+      "verdict": "missing",
+      "evidence": [],
+      "explanation": "授权简历证据中未找到 Kubernetes。"
+    }
+  ],
+  "parent_run_id": "parent-run-demo",
+  "child_run_ids": ["child-run-evidence"],
+  "revision": 1,
+  "created_at": "2026-08-17T11:00:00+08:00",
+  "stale_reason": null,
+  "allowed_actions": ["explain", "generate_suggestions", "reanalyze"]
+}

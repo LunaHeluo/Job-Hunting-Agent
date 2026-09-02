@@ -95,6 +95,16 @@ async def test_playwright_guard_allows_targetless_snapshot_only_after_navigation
         assert attestation.dns_pinned is True
         assert attestation.redirects_enforced is True
         assert attestation.peer_verified is True
+        wait = await guard(
+            SimpleNamespace(
+                tool_name="mcp__playwright__browser_wait_for",
+                server_id="playwright",
+                session_id="session-a",
+                snapshot_id="snapshot-1",
+                arguments={"time": 1},
+            )
+        )
+        assert wait.targets == ("https://jobs.example/role",)
         click = await guard(
             SimpleNamespace(
                 tool_name="mcp__playwright__browser_click",
@@ -155,6 +165,41 @@ async def test_exact_navigation_can_reuse_an_already_guarded_connection() -> Non
             lease_generation=1,
             final_url="https://jobs.example/role",
         ) is True
+    finally:
+        await guard.close()
+
+
+@pytest.mark.asyncio
+async def test_exact_cached_navigation_authorizes_only_the_staged_target() -> None:
+    guard = PlaywrightNetworkGuard(resolver=_public_resolver)
+    await guard.start()
+    guard.activate_generation("playwright", "snapshot-1", 1)
+    navigate = SimpleNamespace(
+        call_id="navigate-cache-hit",
+        tool_name="mcp__playwright__browser_navigate",
+        server_id="playwright",
+        session_id="session-a",
+        snapshot_id="snapshot-1",
+        arguments={"url": "https://jobs.example/role"},
+    )
+    snapshot = SimpleNamespace(
+        tool_name="mcp__playwright__browser_snapshot",
+        server_id="playwright",
+        session_id="session-a",
+        snapshot_id="snapshot-1",
+        arguments={},
+    )
+    try:
+        await guard(navigate)
+
+        assert await guard.commit_navigation(
+            navigate,
+            lease_generation=1,
+            final_url="https://jobs.example/role",
+        ) is True
+        assert (await guard(snapshot)).targets == (
+            "https://jobs.example/role",
+        )
     finally:
         await guard.close()
 
@@ -741,5 +786,41 @@ async def test_proxy_rechecks_each_redirect_connection_target() -> None:
             writer.close()
             await writer.wait_closed()
         assert guard.connection_targets == ()
+    finally:
+        await guard.close()
+
+
+@pytest.mark.asyncio
+async def test_proxy_rejects_unstaged_public_redirect_before_network_side_effect() -> None:
+    guard = PlaywrightNetworkGuard(resolver=_public_resolver)
+    await guard.start()
+    try:
+        request = SimpleNamespace(call_id="navigate-1", tool_name="browser_navigate", server_id="playwright", session_id="s", snapshot_id="snap", arguments={"url":"https://jobs.example/role"})
+        guard.activate_generation("playwright", "snap", 1)
+        await guard(request)
+        _host, port = guard.address
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"CONNECT redirect.example:443 HTTP/1.1\r\nHost: redirect.example:443\r\n\r\n")
+        await writer.drain(); response = await reader.read(4096)
+        assert response.startswith(b"HTTP/1.1 403 Forbidden")
+        assert guard.connection_targets == ()
+        writer.close(); await writer.wait_closed()
+    finally:
+        await guard.close()
+
+
+@pytest.mark.asyncio
+async def test_proxy_does_not_share_authority_across_active_sessions() -> None:
+    guard = PlaywrightNetworkGuard(resolver=_public_resolver); await guard.start()
+    try:
+        guard.activate_generation("playwright", "snap", 1)
+        for session, call, url in (("a","a1","https://a.example/x"),("b","b1","https://b.example/x")):
+            await guard(SimpleNamespace(call_id=call, tool_name="browser_navigate", server_id="playwright", session_id=session, snapshot_id="snap", arguments={"url":url}))
+        _host, port = guard.address
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"CONNECT b.example:443 HTTP/1.1\r\nHost: b.example:443\r\n\r\n"); await writer.drain()
+        assert (await reader.read(4096)).startswith(b"HTTP/1.1 403 Forbidden")
+        assert guard.connection_targets == ()
+        writer.close(); await writer.wait_closed()
     finally:
         await guard.close()

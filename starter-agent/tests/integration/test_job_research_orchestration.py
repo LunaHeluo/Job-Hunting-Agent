@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from starter_agent.capabilities.gate import (
     NetworkGuardAttestation,
     PreToolCallGate,
@@ -567,7 +569,8 @@ async def test_bootstrap_application_entry_fails_closed_after_real_browser_publi
     monkeypatch.setattr(bootstrap, "get_settings", lambda: settings)
     bootstrap.create_application.cache_clear()
     application = bootstrap.create_application()
-    assert application.job_research is not None
+    assert application.job_research is None
+    assert application.single_agent_baseline_runner is not None
 
     executor = application.runtime.executor
     store = application.runtime.gate.store
@@ -635,16 +638,11 @@ async def test_bootstrap_application_entry_fails_closed_after_real_browser_publi
     assert capability.enabled and capability.connected
     assert executor.has_invoker("playwright", "browser_navigate") is False
 
-    result = await application.analyze_job_research(
-        query="AI Agent engineer",
-        selected_url="https://jobs.example/agent",
-        session_id=uuid4(),
-    )
-
-    assert result.status == "dependency_unavailable"
-    assert result.missing_dependencies == (
-        "mcp:mcp__playwright__browser_navigate",
-        "mcp:mcp__playwright__browser_snapshot",
-    )
-    assert result.trace == ()
+    with pytest.raises(RuntimeError, match="legacy_path_forbidden"):
+        await application.analyze_job_research(
+            query="AI Agent engineer",
+            selected_url="https://jobs.example/agent",
+            session_id=uuid4(),
+        )
+    assert executor.has_invoker("playwright", "browser_navigate") is False
     bootstrap.create_application.cache_clear()

@@ -88,6 +88,38 @@ def _configuration(tmp_path: Path) -> McpConfiguration:
 
 
 @pytest.mark.asyncio
+async def test_equivalent_live_refresh_keeps_strict_active_snapshot_id(
+    tmp_path: Path,
+) -> None:
+    schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+    clients = [_Client("alpha", schema), _Client("alpha", schema)]
+
+    def factory(server_id: str, _config: McpServerConfig) -> _Client:
+        client = clients.pop(0)
+        assert client.server_id == server_id
+        return client
+
+    store = CapabilityStore("sqlite:///:memory:", tmp_path)
+    manager = McpManager(
+        _configuration(tmp_path),
+        store=store,
+        client_factory=factory,
+        initialize_timeout_seconds=0.2,
+        shutdown_timeout_seconds=0.2,
+    )
+    await manager.start()
+    initial = await manager.discover("alpha")
+
+    refreshed = await manager.refresh_server(
+        "alpha", manager.get_status("alpha").revision
+    )
+
+    assert refreshed.id == initial.id
+    assert store.get_active_snapshot("alpha").id == initial.id
+    assert store.get_snapshot("alpha-snapshot-2").active is False
+
+
+@pytest.mark.asyncio
 async def test_refresh_swaps_only_valid_candidate_and_invalidates_changed_schema(
     tmp_path: Path,
 ) -> None:

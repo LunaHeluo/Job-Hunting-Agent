@@ -13,7 +13,7 @@ from starter_agent.skills.registry import SkillRegistry
 from starter_agent.skills.selector import SkillSelector
 
 
-SKILLS_ROOT = Path(__file__).parents[2] / "src" / "starter_agent" / "skills"
+SKILLS_ROOT = Path(__file__).parents[2]  / "backend" / "src" / "starter_agent" / "skills"
 
 
 class _UnusedProvider(Provider):
