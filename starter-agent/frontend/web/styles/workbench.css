@@ -70,8 +70,8 @@ body.workbench-active .workbench-profile-metrics strong { font-size: 15px; }
 body.workbench-active .workbench-profile-footer { padding: 13px 22px; }
 body.workbench-active .workbench-agent-actions button { font-size: 12px; }
 body.workbench-active .workbench-chat-dock .bubble { font-size: 13px; }
-body.workbench-active .match-score-number strong { font-size: clamp(50px, 5vw, 70px); }
-body.workbench-active .match-score-number span { font-size: 16px; }
+body.workbench-active .match-score-number strong { font-size: clamp(42px, 4vw, 58px); }
+body.workbench-active .match-score-number span { font-size: 14px; }
 body.workbench-active .match-job-summary h2 { font-size: clamp(17px, 1.6vw, 21px); }
 body.workbench-active .match-job-summary p,
 body.workbench-active .match-insight-body,
@@ -151,12 +151,13 @@ body.workbench-active .workbench-profile-card { border-color: var(--wb-line); bo
 body.workbench-active .workbench-profile-identity { padding: 10px 14px 7px; border-color: var(--wb-line); }
 body.workbench-active .workbench-profile-identity strong { font-size: 16px; }
 body.workbench-active .workbench-profile-identity span { font-size: 11px; }
+body.workbench-active #workbenchProfileCaption { font-size: 10px; }
 body.workbench-active .workbench-profile-identity span:last-child { font-size: 13px; }
 body.workbench-active .workbench-profile-metrics { gap: 12px; padding: 8px 14px; border-color: var(--wb-line); }
-body.workbench-active .workbench-profile-metrics span { color: var(--wb-muted); font-size: 11px; }
-body.workbench-active .workbench-profile-metrics strong { font-size: 14px; }
-body.workbench-active .workbench-profile-footer { padding: 8px 14px; color: var(--wb-muted); font-size: var(--wb-aux-font-size); }
-body.workbench-active .workbench-profile-footer button { min-height: 31px; padding: 4px 10px; border-color: var(--wb-line); background: var(--wb-paper); font-size: 12px; }
+body.workbench-active .workbench-profile-metrics span { color: var(--wb-muted); font-size: 10px; }
+body.workbench-active .workbench-profile-metrics strong { font-size: 12px; }
+body.workbench-active .workbench-profile-footer { padding: 8px 14px; color: var(--wb-muted); font-size: 10px; }
+body.workbench-active .workbench-profile-footer button { min-height: 31px; padding: 4px 10px; border-color: var(--wb-line); background: var(--wb-paper); font-size: 11px; }
 body.workbench-active .workbench-version-picker summary { padding: 7px 14px; font-size: var(--wb-aux-font-size); }
 body.workbench-active .workbench-profile-card .session-list { border-color: var(--wb-line); background: var(--wb-paper); }
 body.workbench-active .workbench-chat-dock > .status,

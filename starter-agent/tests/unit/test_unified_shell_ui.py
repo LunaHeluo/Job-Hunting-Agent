@@ -48,7 +48,9 @@ def _specificity(selector: str) -> tuple[int, int, int]:
     return (selector.count("#"), len(re.findall(r"[.\[:][\w-]+", selector)), 0)
 
 
-def _effective_declaration(target: str, property_name: str, width: int) -> str | None:
+def _effective_declaration(
+    target: str, property_name: str, width: int, *, exact_selector: bool = False
+) -> str | None:
     imports = re.findall(r'@import url\("\./([^"?]+)', (WEB / "styles/app.css").read_text(encoding="utf-8"))
     winner: tuple[tuple[int, int, int], int, str] | None = None
     order = 0
@@ -58,7 +60,8 @@ def _effective_declaration(target: str, property_name: str, width: int) -> str |
             if not _media_matches(media, width):
                 continue
             for selector in selectors.split(","):
-                if target not in selector:
+                selector = selector.strip()
+                if (exact_selector and selector != target) or (not exact_selector and target not in selector):
                     continue
                 match = re.search(rf"(?<![-\w]){re.escape(property_name)}\s*:\s*([^;}}]+)", declarations)
                 if not match:
@@ -389,6 +392,34 @@ def test_desktop_profile_summary_uses_compact_vertical_spacing() -> None:
     assert _effective_declaration(
         "body.workbench-active .workbench-version-picker summary", "padding", 1280
     ) == "7px 14px"
+
+
+def test_desktop_profile_auxiliary_copy_stays_visually_subordinate() -> None:
+    assert _effective_declaration(
+        "body.workbench-active #workbenchProfileCaption", "font-size", 1280
+    ) == "10px"
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-metrics span", "font-size", 1280
+    ) == "10px"
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-metrics strong", "font-size", 1280
+    ) == "12px"
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-footer", "font-size", 1280,
+        exact_selector=True,
+    ) == "10px"
+    assert _effective_declaration(
+        "body.workbench-active .workbench-profile-footer button", "font-size", 1280
+    ) == "11px"
+
+
+def test_desktop_match_score_uses_compact_display_type() -> None:
+    assert _effective_declaration(
+        "body.workbench-active .match-score-number strong", "font-size", 1280
+    ) == "clamp(42px, 4vw, 58px)"
+    assert _effective_declaration(
+        "body.workbench-active .match-score-number span", "font-size", 1280
+    ) == "14px"
 
 
 def test_left_rail_uses_shared_profile_colors_and_smaller_auxiliary_type() -> None:
