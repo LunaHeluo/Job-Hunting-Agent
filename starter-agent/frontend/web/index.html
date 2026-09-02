@@ -44,19 +44,19 @@
               <span><strong id="workbenchSkillCount">—</strong> 技能</span>
             </div>
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传新档案</button></div>
-            <div class="sidebar-header-actions">
-              <button id="newSessionButton" type="button" title="新建会话">新建</button>
-              <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
-            </div>
             <div id="sessionList" class="session-list"><div class="session-empty">正在加载会话...</div></div>
           </section>
-          <section class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
+          <section id="workbenchAgentCard" class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
             <div class="workbench-section-heading workbench-agent-heading">
               <h2 id="workbenchAgentTitle">Starter Agent</h2>
               <div class="workbench-agent-heading-actions">
                 <button id="workbenchTailorResumeButton" class="workbench-agent-tailor" type="button" hidden>AI 定制简历</button>
                 <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
               </div>
+            </div>
+            <div id="workbenchAgentConversationActions" class="workbench-agent-conversation-actions" aria-label="对话管理">
+              <button id="newSessionButton" type="button" title="新建会话">新建</button>
+              <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
             </div>
             <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话">
               <div id="status" class="status">准备连接本地 API</div>

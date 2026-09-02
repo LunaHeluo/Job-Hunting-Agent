@@ -41,7 +41,8 @@ def test_frontend_displays_real_mock_and_budget_token_states() -> None:
     assert "await sendMessage(continuation.next_message)" in html
     assert "appendHistoricalTool(rendered, message)" in html
     assert 'id="clearAllSessionsButton"' in html
-    assert html.index('id="clearAllSessionsButton"') < html.index('id="sessionList"')
+    assert index.index('id="workbenchAgentCard"') < index.index('id="clearAllSessionsButton"')
+    assert index.index('id="workbenchAgentConversationActions"') < index.index('id="clearAllSessionsButton"')
     assert "clearAllSessionsButton.addEventListener" in html
     assert "loadSessions(false)" in html
     assert "sessionListEl.scrollHeight" in html

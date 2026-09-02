@@ -272,6 +272,13 @@ def test_markup_has_one_persistent_shell_and_one_agent_mount() -> None:
     assert HTML.index('id="chatDock"') > HTML.index('id="workbenchChatDock"')
 
 
+def test_conversation_management_actions_belong_to_starter_agent() -> None:
+    tree = parse_html_tree()
+    for button_id in ("newSessionButton", "clearAllSessionsButton"):
+        assert "workbenchAgentCard" in tree.ancestor_ids_by_id[button_id]
+        assert "workbenchAgentConversationActions" in tree.ancestor_ids_by_id[button_id]
+
+
 def test_legacy_shell_and_conflicting_height_rules_are_absent() -> None:
     assert 'id="chatView"' not in HTML
     assert 'class="sidebar"' not in HTML
@@ -364,6 +371,19 @@ def test_desktop_profile_summary_uses_compact_vertical_spacing() -> None:
     assert _effective_declaration(
         "body.workbench-active .workbench-version-picker summary", "padding", 1280
     ) == "7px 14px"
+
+
+def test_left_rail_uses_shared_profile_colors_and_smaller_auxiliary_type() -> None:
+    for contract in (
+        ".workbench-profile-card { padding: 0; overflow: hidden; border-color: var(--wb-line);",
+        "background: var(--wb-paper);",
+        "border-bottom: 1px solid var(--wb-line);",
+        "--wb-aux-font-size: 11px;",
+        "--wb-micro-font-size: 10px;",
+        ".workbench-agent-conversation-actions",
+    ):
+        assert contract in CSS
+    assert "background: #faf4e8" not in CSS
 
 
 def test_application_card_selection_notifies_the_context_rail() -> None:
