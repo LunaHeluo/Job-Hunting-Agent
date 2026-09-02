@@ -417,13 +417,20 @@ def test_desktop_profile_auxiliary_copy_stays_visually_subordinate() -> None:
     ) == "11px"
 
 
-def test_desktop_match_score_uses_compact_display_type() -> None:
+def test_desktop_match_header_and_score_use_compact_display_type() -> None:
+    assert _effective_declaration(
+        "body.workbench-active .workbench-canvas > .workbench-section-heading h1",
+        "font-size", 1280,
+    ) == "18px"
+    assert _effective_declaration(
+        "body.workbench-active #workbenchModeLabel", "font-size", 1280
+    ) == "10px"
     assert _effective_declaration(
         "body.workbench-active .match-score-number strong", "font-size", 1280
-    ) == "clamp(40px, 3.4vw, 48px)"
+    ) == "clamp(36px, 3vw, 42px)"
     assert _effective_declaration(
         "body.workbench-active .match-score-number span", "font-size", 1280
-    ) == "14px"
+    ) == "12px"
 
 
 def test_left_rail_uses_shared_profile_colors_and_smaller_auxiliary_type() -> None:
