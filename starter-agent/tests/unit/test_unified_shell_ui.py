@@ -102,6 +102,13 @@ def parse_html_tree() -> IdTreeParser:
     return parser
 
 
+def test_css_assets_use_compact_ui_cache_namespace() -> None:
+    app_css = (WEB / "styles/app.css").read_text(encoding="utf-8")
+
+    assert 'href="./styles/app.css?v=compact-ui"' in HTML
+    assert '@import url("./workbench.css?v=compact-ui")' in app_css
+
+
 def test_shell_state_separates_primary_routes_from_advanced_windows() -> None:
     for name in ("PRIMARY_ROUTES", "ADVANCED_VIEWS", "resolveShellRoute", "createShellState"):
         assert f"{name}" in STATE
