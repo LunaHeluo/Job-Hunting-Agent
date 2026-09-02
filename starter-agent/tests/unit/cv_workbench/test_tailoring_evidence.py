@@ -150,7 +150,7 @@ def test_selector_scopes_retrieval_and_prefers_the_relevant_react_block() -> Non
         {
             "scope": KnowledgeScope(user_id="local-user", project_id="ws_demo"),
             "knowledge_base_id": KB_ID,
-            "question": "负责前端开发、系统联调和前端 AI 应用，熟悉 React",
+            "question": "react",
             "top_k": 5,
             "document_ids": [ACTIVE_DOCUMENT_ID],
             "document_types": ["resume"],
@@ -165,6 +165,31 @@ def test_selector_scopes_retrieval_and_prefers_the_relevant_react_block() -> Non
     )
     assert {"react", "前端开发", "系统联调"}.issubset(selection.covered_terms)
     assert all(ref.chunk_id != str(OTHER_CHUNK_ID) for ref in selection.evidence)
+
+
+def test_selector_uses_a_skill_anchor_instead_of_requiring_english_action_words():
+    python_api = chunk(
+        UUID("00000000-0000-0000-0000-000000000405"),
+        "负责 Python API engineering",
+    )
+    retriever = RecordingRetriever([match(python_api, rank=1)])
+    selector = ResumeEvidenceSelector(
+        retriever=retriever,
+        chunk_reader=ChunkReader([python_api]),
+    )
+
+    selection = selector.select(
+        requirement_text="Build Python APIs",
+        scope=KnowledgeScope(user_id="local-user", project_id="ws_demo"),
+        knowledge_base_id=KB_ID,
+        document_id=ACTIVE_DOCUMENT_ID,
+        markdown="负责 Python API engineering\n",
+    )
+
+    assert retriever.calls[0]["question"] == "python"
+    assert selection.query_terms == ("python", "api")
+    assert selection.covered_terms == {"python", "api"}
+    assert selection.evidence[0].quote == "负责 Python API engineering"
 
 
 def test_selector_rejects_unmapped_chunks_and_limits_distinct_blocks() -> None:

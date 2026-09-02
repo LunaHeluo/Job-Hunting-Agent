@@ -262,6 +262,8 @@ class TailoredResumeService:
             raise TailoringServiceError("tailoring_workspace_mismatch")
         if analysis.status not in {MatchStatus.VALIDATED, MatchStatus.PARTIAL}:
             raise TailoringServiceError("tailoring_analysis_not_ready")
+        if analysis.rule_version != "match-rule.v2":
+            raise TailoringServiceError("tailoring_analysis_upgrade_required")
         if draft.base_version_id != analysis.resume_version_id:
             raise TailoringServiceError("tailoring_draft_base_mismatch")
 

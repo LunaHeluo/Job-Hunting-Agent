@@ -124,7 +124,7 @@ class StaticGenerator:
         return self.result
 
 
-def setup_tailoring_service(tmp_path):
+def setup_tailoring_service(tmp_path, *, rule_version="match-rule.v2"):
     module = tailoring_module()
     now = datetime(2026, 8, 26, tzinfo=UTC)
     store = SQLiteWorkbenchStore(
@@ -228,7 +228,7 @@ def setup_tailoring_service(tmp_path):
             "job_snapshot_id": snapshot.snapshot_id,
             "job_content_sha256": snapshot.content.content_sha256,
             "status": "validated",
-            "rule_version": "match-rule.v1",
+            "rule_version": rule_version,
             "validator_version": "validator.v1",
             "total_score": 50.0,
             "requirements": [
@@ -290,6 +290,30 @@ def setup_tailoring_service(tmp_path):
     normalized = versions.normalizer.normalize(markdown)
     paragraph = next(block for block in normalized.blocks if block.kind == "paragraph")
     return module, service, fake, analysis, draft, store, paragraph.block_id
+
+
+@pytest.mark.asyncio
+async def test_tailoring_requires_a_v2_evidence_analysis_before_provider_call(
+    tmp_path,
+) -> None:
+    module, service, fake, analysis, draft, _store, _block_id = (
+        setup_tailoring_service(tmp_path, rule_version="match-rule.v1")
+    )
+
+    with pytest.raises(
+        module.TailoringServiceError,
+        match="tailoring_analysis_upgrade_required",
+    ):
+        await service.generate_candidates(
+            module.TailoringCommand(
+                workspace_id="ws_demo",
+                analysis_id=analysis.analysis_id,
+                draft_id=draft.draft_id,
+            ),
+            principal=PRINCIPAL,
+        )
+
+    assert fake.calls == []
 
 
 @pytest.mark.asyncio

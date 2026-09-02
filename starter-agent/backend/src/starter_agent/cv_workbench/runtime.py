@@ -26,6 +26,7 @@ from starter_agent.cv_workbench.resume_import_adapters import (
 )
 from starter_agent.cv_workbench.store import SQLiteWorkbenchStore
 from starter_agent.cv_workbench.suggestions import SuggestionService
+from starter_agent.cv_workbench.tailoring_evidence import ResumeEvidenceSelector
 from starter_agent.cv_workbench.tailoring import (
     TailoredResumeGenerator,
     TailoredResumeService,
@@ -36,7 +37,10 @@ from starter_agent.cv_workbench.version_adapters import (
 from starter_agent.cv_workbench.versioning import ResumeVersionService
 from starter_agent.cv_workbench.workspaces import FeatureAvailabilityProvider, WorkspaceService
 from starter_agent.infrastructure.session_store import SQLiteSessionStore
+from starter_agent.knowledge.mappings import build_query_mapping_catalog
+from starter_agent.knowledge.retrieval import KnowledgeRetriever
 from starter_agent.knowledge.store import SQLiteKnowledgeStore
+from starter_agent.settings import QueryMappingConfig
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,7 @@ class WorkbenchRuntime:
     versions: ResumeVersionService
     merges: ResumeMergeService
     jobs: JobService
+    evidence_selector: ResumeEvidenceSelector
     matches: MatchService
     suggestions: SuggestionService
     tailoring: TailoredResumeService | None
@@ -75,6 +80,13 @@ def create_workbench_runtime(
     store = SQLiteWorkbenchStore(database_url, project_root)
     artifacts = SQLiteSessionStore(database_url, project_root)
     knowledge = SQLiteKnowledgeStore(database_url, project_root)
+    evidence_selector = ResumeEvidenceSelector(
+        retriever=KnowledgeRetriever(
+            knowledge,
+            build_query_mapping_catalog(QueryMappingConfig()),
+        ),
+        chunk_reader=knowledge,
+    )
     knowledge_reader = KnowledgeEvidenceReader(knowledge)
     evidence = EvidenceBindingService(
         store=store,
@@ -111,6 +123,7 @@ def create_workbench_runtime(
             content=SessionKnowledgeJobContentRepository(artifacts, knowledge),
             evidence=evidence,
         ),
+        evidence_selector=evidence_selector,
         matches=MatchService(
             store=store,
             candidates=SessionMatchCandidateRepository(artifacts),
