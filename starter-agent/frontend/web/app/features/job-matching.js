@@ -116,7 +116,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   function renderResearchForm(workspaceId) {
-    activatePanel();
+    if (activatePanel() === false) return false;
     const panel = document.createElement("section"); panel.className = "research-panel";
     const title = document.createElement("h2"); title.textContent = "自动岗位调研";
     const query = document.createElement("textarea"); query.rows = 5; query.placeholder = "例如：上海 Python 后端，偏 AI 平台"; query.setAttribute("aria-label", "岗位调研条件");
@@ -276,7 +276,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function openJob(workspaceId, jobId) {
-    activatePanel();
+    if (activatePanel() === false) return false;
     elements.main.textContent = "正在加载岗位快照…";
     try {
       const [job, snapshots] = await Promise.all([request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}`), request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}/snapshots`)]);
@@ -294,7 +294,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function renderMatchChooser(workspaceId) {
-    activatePanel();
+    if (activatePanel() === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在加载可评估对象…";
     try {
@@ -327,7 +327,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   function label(text, control) { const value = document.createElement("label"); value.append(text, control); return value; }
 
   async function renderAnalysis(workspaceId, analysis) {
-    activatePanel();
+    if (activatePanel() === false) return false;
     elements.main.className = "";
     updateWorkbenchContext({
       workspace_id: workspaceId,
@@ -403,7 +403,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function prepareSuggestions(workspaceId, analysis) {
-    activatePanel({ resetScroll: true });
+    if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在创建可恢复 Draft 并生成候选…";
     try {
@@ -425,7 +425,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function prepareTailoredResume(workspaceId, analysisId) {
-    activatePanel({ resetScroll: true });
+    if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在读取匹配分析并准备 AI 定制简历…";
     try {
@@ -497,7 +497,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   function renderTailoredSuggestions(workspaceId, analysis, suggestions, diagnostics = {}) {
-    activatePanel({ resetScroll: true });
+    if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     const panel = document.createElement("section"); panel.className = "suggestion-panel tailored-suggestion-panel";
     const header = document.createElement("header"); header.className = "tailored-suggestion-header";
@@ -600,7 +600,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function renderSuggestions(workspaceId, analysis) {
-    activatePanel({ resetScroll: true });
+    if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在加载建议…";
     try {

@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
 import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui";
-import { createJobMatching } from "./job-matching.js?v=compact-ui";
+import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js";
@@ -65,6 +65,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   let currentHome = null;
   let loadEpoch = 0;
   let activationEpoch = 0;
+  let lastWorkbenchPanel = null;
 
   function isCurrentActivation(route, token) {
     return activeRoute === route && activationEpoch === token;
@@ -138,7 +139,25 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   });
 
   function showContentPanel(panel, options = {}) {
+    if (activeRoute !== "workbench") return false;
+    lastWorkbenchPanel = panel;
     contentPanelCoordinator.show(panel, options);
+    return true;
+  }
+
+  function applyPrimaryRoutePresentation(route) {
+    const workbench = route === "workbench";
+    if (elements.stageCallout) elements.stageCallout.hidden = !workbench;
+    if (elements.contentTabs) elements.contentTabs.hidden = !workbench;
+    if (workbench) return;
+
+    elements.main.hidden = false;
+    elements.match.hidden = true;
+    elements.title.closest(".workbench-section-heading").hidden = false;
+    elements.mode.textContent = route === "version-map" ? "版本" : "投递";
+    elements.title.textContent = route === "version-map" ? "版本地图" : "投递看板";
+    contentScrollRegion.dataset.contentPanel = route;
+    contentScrollRegion.dataset.hasResume = "false";
   }
 
   function setStatus(message, error = false) {
@@ -305,7 +324,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       C: ["准备匹配评估", "选择已确认的简历版本和岗位快照；分析结果将展示要求项与证据。"],
       D: ["确认本次修改", "逐条审批建议后，再保存并确认新版本。"],
     }[mode];
-    applyContentPanelPresentation(elements.match.hidden ? "archive" : "match");
+    const workbenchPanel = mode === "C" ? (lastWorkbenchPanel || "match") : "archive";
+    if (route === "workbench") showContentPanel(workbenchPanel);
+    else applyPrimaryRoutePresentation(route);
     elements.main.textContent = copy[1];
     elements.jobCount.textContent = `${stats.job_count || 0} 个`;
     elements.jobList.textContent = stats.job_count
@@ -340,18 +361,15 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     }
     if (route === "workbench") {
       jobMatching.renderJobList(home, activeWorkspaceId);
-      if (mode === "C") {
-        showContentPanel("match");
+      if (mode === "C" && workbenchPanel === "match") {
         void jobMatching.renderMain(home, activeWorkspaceId);
       } else if (home.recent_versions?.[0]) {
-        showContentPanel("archive");
         void resumeWorkspace.renderResumePreview(
           activeWorkspaceId,
           home.recent_versions[0].version_id,
           home.recent_versions[0].label,
         );
       } else {
-        showContentPanel("archive");
         elements.main.className = "workbench-empty workbench-stage-empty";
         elements.main.textContent = "上传现有简历后，这里会展示结构化档案预览。";
       }
@@ -433,7 +451,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   async function activate(route) {
     const token = ++activationEpoch;
     activeRoute = route;
-    elements.title.textContent = route === "version-map" ? "版本地图" : route === "applications" ? "投递看板" : elements.title.textContent;
+    applyPrimaryRoutePresentation(route);
     elements.actionStatus.textContent = route === "version-map"
       ? "选择版本后显示可用操作"
       : route === "applications"
@@ -442,6 +460,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     await load(true, route, token);
   }
   async function tailorResume(context) {
+    if (activeRoute !== "workbench") throw new Error("请先返回工作台，再生成 AI 定制简历");
     const workspaceId = context?.workspace_id || activeWorkspaceId;
     const analysisId = context?.match_analysis_id;
     if (!workspaceId || !analysisId) throw new Error("需要当前求职目标和匹配分析");

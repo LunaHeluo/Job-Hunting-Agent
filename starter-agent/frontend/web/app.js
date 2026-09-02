@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -312,6 +312,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         stageResume: document.querySelector("#workbenchStageResume"),
         stageJob: document.querySelector("#workbenchStageJob"),
         stageAnalysis: document.querySelector("#workbenchStageAnalysis"),
+        stageCallout: document.querySelector("#workbenchStageCallout"),
+        contentTabs: document.querySelector("#workbenchContentTabs"),
         stageEyebrow: document.querySelector("#workbenchStageEyebrow"),
         stageTitle: document.querySelector("#workbenchStageTitle"),
         stageDescription: document.querySelector("#workbenchStageDescription"),
