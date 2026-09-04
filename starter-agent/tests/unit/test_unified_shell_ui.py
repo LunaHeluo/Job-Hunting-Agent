@@ -106,12 +106,13 @@ def test_frontend_assets_use_compact_ui_cache_namespace() -> None:
     app_css = (WEB / "styles/app.css").read_text(encoding="utf-8")
     workbench_shell = (WEB / "app/features/workbench-shell.js").read_text(encoding="utf-8")
 
-    assert 'href="./styles/app.css?v=compact-ui&amp;layout=stable"' in HTML
-    assert '@import url("./workbench.css?v=compact-ui&layout=stable")' in app_css
-    assert 'src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active"' in HTML
-    assert 'from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active"' in APP
-    assert 'from "./resume-workspace.js?v=compact-ui"' in workbench_shell
-    assert 'from "./job-matching.js?v=compact-ui&guard=active"' in workbench_shell
+    assert 'href="./styles/app.css?v=compact-ui&amp;layout=stable&amp;motion=stable"' in HTML
+    assert '@import url("./workbench.css?v=compact-ui&layout=stable&motion=stable")' in app_css
+    assert 'src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable"' in HTML
+    assert 'from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable"' in APP
+    assert 'from "./resume-workspace.js?v=compact-ui&motion=stable"' in workbench_shell
+    assert 'from "./job-matching.js?v=compact-ui&guard=active&motion=stable"' in workbench_shell
+    assert 'from "./applications-board.js?v=compact-ui&motion=stable"' in workbench_shell
 
 
 def test_shell_state_separates_primary_routes_from_advanced_windows() -> None:
@@ -561,6 +562,9 @@ card.emit("keydown", {{
 }});
 assert.equal(descendantPrevented, false, "card selection does not cancel a descendant control");
 assert.equal(selected, null, "a descendant key event does not select the card");
+board.setInteractiveGuard(() => false);
+card.emit("click");
+assert.equal(selected, null, "a cached card from an inactive workspace cannot update context");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
@@ -689,17 +693,20 @@ import {{ createRouteActivationCoordinator }} from {json.dumps(module_url)};
 const deferred = new Map();
 const restored = [];
 const scheduled = [];
+const shown = [];
 let renderedRoute = "workbench";
 const captured = [];
 const scrollTop = {{ workbench: 11, "version-map": 29, applications: 47 }};
 const coordinator = createRouteActivationCoordinator({{
   activate: route => new Promise(resolve => deferred.set(route, resolve)),
   onStart() {{ captured.push([renderedRoute, scrollTop[renderedRoute]]); }},
+  onShown: route => shown.push(route),
   onActivated: route => {{ renderedRoute = route; }},
   onCurrent: route => restored.push(route),
   schedule: callback => scheduled.push(callback),
 }});
 const first = coordinator.apply("version-map");
+assert.deepEqual(shown, ["version-map"], "cached surface scroll is restored before network activation settles");
 deferred.get("version-map")();
 await first;
 assert.deepEqual(captured, [["workbench", 11]]);
@@ -911,13 +918,15 @@ const versionMap = {
   edges: [],
 };
 
-function createShellFixture(createMergeRequest) {
+function createShellFixture(createMergeRequest, interceptRequest = () => null) {
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
+    const intercepted = interceptRequest(path, options);
+    if (intercepted) return intercepted;
     if (path.endsWith("/v1/workbench/merge-proposals") && options.method === "POST") return createMergeRequest();
     if (path.includes("/version-map")) return response(versionMap);
     if (path.includes("/view-preference")) return response({ node_positions: {}, collapsed_branch_ids: [], viewport_zoom: 1 });
-    if (path.includes("workspaces?")) return response({ items: [{ workspace_id: "workspace_1", name: "Target" }] });
+    if (path.includes("workspaces?")) return response({ items: [{ workspace_id: "workspace_1", name: "Target" }, { workspace_id: "workspace_2", name: "Second" }] });
     if (path.includes("/home")) return response({
       stats: { resume_count: 1, job_count: 1, active_operation_count: 0 },
       recent_versions: [{ resume_id: "resume_1", version_id: "target_1", label: "目标版本" }],
@@ -929,18 +938,18 @@ function createShellFixture(createMergeRequest) {
     if (path.includes("/content?")) return response({ markdown: "", profile: null });
     return response({ items: [] });
   };
-  const element = () => new Element(); const main = element(); const match = element(); const status = element(); const jobList = element(); const contextContent = element();
-  const stageCallout = element(); const contentTabs = element(); const mode = element(); const title = element();
+  const element = () => new Element(); const main = element(); const match = element(); const versionMapMain = element(); const applicationsMain = element(); const status = element(); const jobList = element(); const contextContent = element();
+  const stageCallout = element(); const contentTabs = element(); const mode = element(); const title = element(); const workspace = element();
   const shell = createWorkbenchShell({ getApiBase: () => "", elements: {
-    status, workspace: element(), jobCount: element(), jobList, agentContext: element(), operationCards: element(),
-    mode, title, main, match, archiveTab: element(), matchTab: element(), view: element(), candidateRail: element(),
+    status, workspace, jobCount: element(), jobList, agentContext: element(), operationCards: element(),
+    mode, title, main, match, versionMapMain, applicationsMain, archiveTab: element(), matchTab: element(), view: element(), candidateRail: element(),
     stageCallout, contentTabs,
     stageResume: element(), stageJob: element(), stageAnalysis: element(), stageEyebrow: element(), stageTitle: element(), stageDescription: element(),
     stagePrimary: element(), stageSecondary: element(), agentActions: element(), taskCenter: element(), tailorResumeButton: element(),
     contextTitle: element(), contextMeta: element(), contextDescription: element(), contextContent, actionBar: element(), actionStatus: element(),
     resumeList: element(),
   } });
-  return { shell, main, match, status, jobList, contextContent, stageCallout, contentTabs, mode, title };
+  return { shell, main, match, versionMapMain, applicationsMain, status, workspace, jobList, contextContent, stageCallout, contentTabs, mode, title };
 }
 
 const findByText = (node, text) => node.tagName === "BUTTON" && node.textContent === text
@@ -948,7 +957,7 @@ const findByText = (node, text) => node.tagName === "BUTTON" && node.textContent
 const flush = async () => { for (let turn = 0; turn < 12; turn += 1) await Promise.resolve(); };
 async function selectTargetVersion(fixture) {
   await fixture.shell.activate("version-map");
-  const target = fixture.main.querySelectorAll(".version-node").find(item => item.dataset.versionId === "target_1");
+  const target = fixture.versionMapMain.querySelectorAll(".version-node").find(item => item.dataset.versionId === "target_1");
   assert.ok(target, "the real Version Map rendered the target graph node");
   target.emit("click", { shiftKey: false });
   const merge = findByText(fixture.contextContent, "创建三方合并方案");
@@ -972,16 +981,19 @@ assert.equal(fixture.match.hidden, false);
 await fixture.shell.activate("version-map");
 assert.equal(fixture.stageCallout.hidden, true);
 assert.equal(fixture.contentTabs.hidden, true);
-assert.equal(fixture.main.hidden, false);
+assert.equal(fixture.main.hidden, true);
 assert.equal(fixture.match.hidden, true);
+assert.equal(fixture.versionMapMain.hidden, false);
 assert.equal(fixture.mode.textContent, "版本");
 assert.equal(fixture.title.textContent, "版本地图");
 
 await fixture.shell.activate("applications");
 assert.equal(fixture.stageCallout.hidden, true);
 assert.equal(fixture.contentTabs.hidden, true);
-assert.equal(fixture.main.hidden, false);
+assert.equal(fixture.main.hidden, true);
 assert.equal(fixture.match.hidden, true);
+assert.equal(fixture.versionMapMain.hidden, true);
+assert.equal(fixture.applicationsMain.hidden, false);
 assert.equal(fixture.mode.textContent, "投递");
 assert.equal(fixture.title.textContent, "投递看板");
 
@@ -1007,14 +1019,149 @@ def test_non_workbench_routes_reject_match_panel_activation() -> None:
 const fixture = createShellFixture(() => Promise.resolve(response({})));
 
 await fixture.shell.activate("applications");
-const routeContent = fixture.main.children[0];
+const routeContent = fixture.applicationsMain.children[0];
 await assert.rejects(
   () => fixture.shell.tailorResume({ workspace_id: "workspace_1", match_analysis_id: "analysis_1" }),
   /工作台/,
 );
-assert.equal(fixture.main.hidden, false);
+assert.equal(fixture.main.hidden, true);
 assert.equal(fixture.match.hidden, true);
-assert.equal(fixture.main.children[0], routeContent, "Agent action cannot replace Applications with Match");
+assert.equal(fixture.applicationsMain.hidden, false);
+assert.equal(fixture.applicationsMain.children[0], routeContent, "Agent action cannot replace Applications with Match");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_primary_route_surfaces_stay_mounted_while_background_refresh_runs() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = _real_shell_merge_fixture(module_url) + r'''
+let versionMapCalls = 0;
+let resolveVersionRefresh;
+const fixture = createShellFixture(
+  () => Promise.resolve(response({})),
+  path => {
+    if (!path.includes("/version-map")) return null;
+    versionMapCalls += 1;
+    if (versionMapCalls === 1) return Promise.resolve(response(versionMap));
+    return new Promise(resolve => { resolveVersionRefresh = () => resolve(response(versionMap)); });
+  },
+);
+
+await fixture.shell.activate("version-map");
+const cachedVersionMap = fixture.versionMapMain.children[0];
+assert.ok(cachedVersionMap, "Version Map has a persistent rendered surface");
+
+await fixture.shell.activate("applications");
+const cachedApplications = fixture.applicationsMain.children[0];
+assert.ok(cachedApplications, "Applications has a separate persistent rendered surface");
+assert.equal(fixture.versionMapMain.hidden, true);
+
+const refreshing = fixture.shell.activate("version-map");
+assert.equal(fixture.versionMapMain.hidden, false, "cached Version Map is revealed synchronously");
+assert.equal(fixture.applicationsMain.hidden, true);
+assert.equal(fixture.versionMapMain.children[0], cachedVersionMap, "background refresh does not replace the cached view with a loading state");
+for (let turn = 0; turn < 12 && !resolveVersionRefresh; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveVersionRefresh, "function", "Version Map refresh continues in the background");
+assert.equal(fixture.versionMapMain.children[0], cachedVersionMap, "cached view remains visible while refresh is pending");
+const cachedNode = fixture.versionMapMain.querySelectorAll(".version-node")[0];
+fixture.contextContent.replaceChildren();
+cachedNode.emit("click", { shiftKey: false });
+assert.ok(fixture.contextContent.children.length, "cached Version Map stays interactive during refresh");
+resolveVersionRefresh();
+await refreshing;
+assert.ok(fixture.versionMapMain.children[0], "refreshed Version Map remains rendered");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_workspace_change_invalidates_surfaces_and_discards_late_match_result() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = _real_shell_merge_fixture(module_url) + r'''
+let matchCalls = 0;
+let resolveOldMatch;
+const oldAnalysis = {
+  analysis_id: "analysis_old", resume_version_id: "target_1", job_snapshot_id: "job_old",
+  total_score: 78, status: "validated", rule_version: "v1", requirements: [], dimensions: [],
+};
+const fixture = createShellFixture(
+  () => Promise.resolve(response({})),
+  path => {
+    if (!path.includes("/match-analyses?")) return null;
+    matchCalls += 1;
+    if (matchCalls === 1) return new Promise(resolve => { resolveOldMatch = () => resolve(response({ items: [oldAnalysis] })); });
+    return Promise.resolve(response({ items: [] }));
+  },
+);
+
+await fixture.shell.activate("workbench");
+for (let turn = 0; turn < 12 && !resolveOldMatch; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveOldMatch, "function", "old workspace Match refresh is pending");
+fixture.main.append(new Element("article"));
+fixture.match.append(new Element("article"));
+fixture.versionMapMain.append(new Element("article"));
+fixture.applicationsMain.append(new Element("article"));
+
+fixture.workspace.value = "workspace_2";
+fixture.workspace.emit("change");
+assert.equal(fixture.main.children.length, 0, "Archive cache is cleared synchronously for a different workspace");
+assert.equal(fixture.match.children.length, 0, "Match cache is cleared synchronously for a different workspace");
+assert.equal(fixture.versionMapMain.children.length, 0, "Version Map cache is cleared synchronously for a different workspace");
+assert.equal(fixture.applicationsMain.children.length, 0, "Applications cache is cleared synchronously for a different workspace");
+
+resolveOldMatch();
+await flush();
+assert.equal(fixture.match.querySelector(".match-analysis-panel"), null, "late Match response from the old workspace is discarded");
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", harness],
+        check=False,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_completed_empty_match_surface_remains_visible_during_refresh() -> None:
+    module_url = (WEB / "app/features/workbench-shell.js").resolve().as_uri()
+    harness = _real_shell_merge_fixture(module_url) + r'''
+let matchCalls = 0;
+let resolveMatchRefresh;
+const fixture = createShellFixture(
+  () => Promise.resolve(response({})),
+  path => {
+    if (!path.includes("/match-analyses?")) return null;
+    matchCalls += 1;
+    if (matchCalls === 1) return Promise.resolve(response({ items: [] }));
+    return new Promise(resolve => { resolveMatchRefresh = () => resolve(response({ items: [] })); });
+  },
+);
+
+await fixture.shell.activate("workbench");
+await flush();
+const emptyState = fixture.match.textContent;
+assert.match(emptyState, /尚无匹配结果/);
+await fixture.shell.activate("version-map");
+const returning = fixture.shell.activate("workbench");
+for (let turn = 0; turn < 12 && !resolveMatchRefresh; turn += 1) await Promise.resolve();
+assert.equal(typeof resolveMatchRefresh, "function", "Match refresh is pending");
+assert.equal(fixture.match.textContent, emptyState, "completed empty state is cached instead of replaced by loading text");
+resolveMatchRefresh();
+await returning;
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],
@@ -1036,11 +1183,11 @@ merge.emit("click");
 await flush();
 assert.equal(typeof resolveMerge, "function", "the real merge proposal POST is in flight");
 await fixture.shell.activate("applications");
-const applications = fixture.main.children[0];
+const applications = fixture.applicationsMain.children[0];
 assert.equal(applications?.className, "applications-board", "Applications rendered while the old merge POST was pending");
 resolveMerge({ proposal_id: "proposal_1", status: "ready", revision: 1, decisions: [] });
 await flush();
-assert.equal(fixture.main.children[0], applications, "late merge proposal cannot replace Applications");
+assert.equal(fixture.applicationsMain.children[0], applications, "late merge proposal cannot replace Applications");
 '''
     result = subprocess.run(
         ["node", "--input-type=module", "-e", harness],

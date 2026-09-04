@@ -2,4 +2,4 @@
 @import url("./base.css");
 @import url("./shell.css");
 @import url("./legacy.css");
-@import url("./workbench.css?v=compact-ui&layout=stable");
+@import url("./workbench.css?v=compact-ui&layout=stable&motion=stable");

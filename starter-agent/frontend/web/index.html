@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <title>Starter Agent</title>
-  <link rel="stylesheet" href="./styles/app.css?v=compact-ui&amp;layout=stable">
+  <link rel="stylesheet" href="./styles/app.css?v=compact-ui&amp;layout=stable&amp;motion=stable">
 </head>
 <body>
   <main id="appShell" class="app-shell">
@@ -112,8 +112,10 @@
             </nav>
             <div class="workspace-scroll-region" data-scroll-key="center">
               <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
-              <div id="workbenchMainContent" class="workbench-empty">工作台只显示后端确认的数据；当前没有可展示内容。</div>
-              <div id="workbenchMatchContent" class="workbench-empty" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+              <div id="workbenchMainContent" class="workbench-empty workbench-route-surface">工作台只显示后端确认的数据；当前没有可展示内容。</div>
+              <div id="workbenchMatchContent" class="workbench-empty workbench-route-surface" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+              <div id="workbenchVersionMapContent" class="workbench-route-surface" hidden></div>
+              <div id="workbenchApplicationsContent" class="workbench-route-surface" hidden></div>
             </div>
             <footer id="workbenchActionBar" class="workbench-action-bar" aria-live="polite">
               <span id="workbenchActionStatus">选择当前任务后显示可用操作</span>
@@ -432,6 +434,6 @@
     </section>
   </div>
 
-  <script type="module" src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active"></script>
+  <script type="module" src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable"></script>
 </body>
 </html>

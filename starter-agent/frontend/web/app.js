@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -299,6 +299,8 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         scrollRegion: document.querySelector(".workspace-scroll-region"),
         main: document.querySelector("#workbenchMainContent"),
         match: document.querySelector("#workbenchMatchContent"),
+        versionMapMain: document.querySelector("#workbenchVersionMapContent"),
+        applicationsMain: document.querySelector("#workbenchApplicationsContent"),
         contextTitle: document.querySelector("#workbenchContextTitle"),
         contextMeta: document.querySelector("#workbenchContextMeta"),
         contextDescription: document.querySelector("#workbenchContextDescription"),
@@ -4172,6 +4174,9 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         applicationsPageTab.setAttribute("aria-current", route === "applications" ? "page" : "false");
       },
       activate: route => workbenchShell.activate(route),
+      onShown(route) {
+        restoreRouteScroll(route);
+      },
       onActivated(route) {
         renderedPrimaryRoute = route;
       },

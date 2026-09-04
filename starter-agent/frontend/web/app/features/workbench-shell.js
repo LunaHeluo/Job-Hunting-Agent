@@ -1,17 +1,19 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui";
-import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active";
+import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable";
+import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
-import { createApplicationsBoard } from "./applications-board.js";
+import { createApplicationsBoard } from "./applications-board.js?v=compact-ui&motion=stable";
 
-export function createRouteActivationCoordinator({ activate, onStart, onActivated = () => {}, onCurrent, schedule = callback => requestAnimationFrame(callback) }) {
+export function createRouteActivationCoordinator({ activate, onStart, onShown = () => {}, onActivated = () => {}, onCurrent, schedule = callback => requestAnimationFrame(callback) }) {
   let epoch = 0;
   return Object.freeze({
     async apply(route) {
       const token = ++epoch;
       onStart(route);
-      await activate(route);
+      const activation = activate(route);
+      onShown(route);
+      await activation;
       if (token !== epoch) return false;
       onActivated(route);
       schedule(() => {
@@ -118,12 +120,65 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   }
 
   const contentScrollRegion = elements.scrollRegion || { scrollTop: 0, dataset: {} };
+  const versionMapMain = elements.versionMapMain || elements.main;
+  const applicationsMain = elements.applicationsMain || elements.main;
+  const routeSurfaces = Object.freeze({
+    archive: elements.main,
+    match: elements.match,
+    "version-map": versionMapMain,
+    applications: applicationsMain,
+  });
+  const surfaceStates = new WeakMap();
+
+  function showOnlySurface(surface) {
+    for (const item of new Set(Object.values(routeSurfaces))) item.hidden = true;
+    routeSurfaces[surface].hidden = false;
+  }
+
+  function hasRenderedContent(surface, workspaceId = activeWorkspaceId) {
+    const state = surfaceStates.get(surface);
+    return state?.workspaceId === workspaceId && state.completed === true;
+  }
+
+  function prepareSurface(surface, workspaceId = activeWorkspaceId) {
+    const preserveContent = hasRenderedContent(surface, workspaceId);
+    if (!preserveContent) surfaceStates.set(surface, { workspaceId, completed: false });
+    return preserveContent;
+  }
+
+  function completeSurface(surface, workspaceId, rendered) {
+    if (rendered !== true || activeWorkspaceId !== workspaceId) return;
+    surfaceStates.set(surface, { workspaceId, completed: true });
+  }
+
+  function invalidateRouteSurfaces() {
+    for (const surface of new Set(Object.values(routeSurfaces))) {
+      surface.replaceChildren();
+      surface.textContent = "";
+      surfaceStates.delete(surface);
+    }
+    currentHome = null;
+    lastWorkbenchPanel = null;
+    updateWorkbenchContext({ workspace_id: activeWorkspaceId || null, resume_version_id: null, job_snapshot_id: null, match_analysis_id: null, resume_branch_id: null, lineage_focus_version_id: null, merge_proposal_id: null });
+  }
+
+  function updateInteractiveGuards() {
+    const workspaceId = activeWorkspaceId;
+    versionMapWorkspace?.setInteractiveGuard?.(() => activeRoute === "version-map" && activeWorkspaceId === workspaceId);
+    applicationsBoard?.setInteractiveGuard?.(() => activeRoute === "applications" && activeWorkspaceId === workspaceId);
+    jobMatching?.setLifecycleGuard?.(() => activeRoute === "workbench" && activeWorkspaceId === workspaceId && lastWorkbenchPanel === "match");
+  }
+
+  function preferredWorkbenchPanel() {
+    if (lastWorkbenchPanel) return lastWorkbenchPanel;
+    const stats = currentHome?.stats || {};
+    return stats.resume_count && stats.job_count ? "match" : "archive";
+  }
 
   function applyContentPanelPresentation(panel) {
     const hasResume = Boolean(currentHome?.recent_versions?.[0]);
     const presentation = contentPanelPresentation(panel, hasResume);
-    elements.main.hidden = !presentation.archive;
-    elements.match.hidden = presentation.archive;
+    showOnlySurface(panel);
     elements.archiveTab.setAttribute("aria-current", presentation.archive ? "page" : "false");
     elements.matchTab.setAttribute("aria-current", presentation.archive ? "false" : "page");
     elements.mode.textContent = presentation.mode;
@@ -149,10 +204,12 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     const workbench = route === "workbench";
     if (elements.stageCallout) elements.stageCallout.hidden = !workbench;
     if (elements.contentTabs) elements.contentTabs.hidden = !workbench;
-    if (workbench) return;
+    if (workbench) {
+      showOnlySurface(preferredWorkbenchPanel());
+      return;
+    }
 
-    elements.main.hidden = false;
-    elements.match.hidden = true;
+    showOnlySurface(route);
     elements.title.closest(".workbench-section-heading").hidden = false;
     elements.mode.textContent = route === "version-map" ? "版本" : "投递";
     elements.title.textContent = route === "version-map" ? "版本地图" : "投递看板";
@@ -194,6 +251,18 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     reloadHome: () => load(true),
     onVersionSelect: renderVersionContext,
   });
+  const versionMapWorkspace = createResumeWorkspace({
+    request,
+    apiBase: getApiBase,
+    elements: {
+      main: versionMapMain,
+      resumes: elements.resumeList,
+      jobs: elements.jobList,
+      status: elements.status,
+    },
+    reloadHome: () => load(true),
+    onVersionSelect: renderVersionContext,
+  });
   const jobMatching = createJobMatching({
     request,
     elements: { main: elements.match, jobs: elements.jobList, status: elements.status },
@@ -203,8 +272,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
   const applicationsBoard = createApplicationsBoard({
     request,
-    elements: { main: elements.main },
+    elements: { main: applicationsMain },
     onApplicationSelect: renderApplicationContext,
+    onRefreshError: message => setStatus(message, true),
   });
 
   const STAGES = Object.freeze({
@@ -296,7 +366,13 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.stageSecondary.onclick = () => {
       showContentPanel("archive");
       const version = currentHome?.recent_versions?.[0];
-      if (version) void resumeWorkspace.renderResumePreview(activeWorkspaceId, version.version_id, version.label);
+      if (version) {
+        const workspaceId = activeWorkspaceId;
+        void resumeWorkspace.renderResumePreview(workspaceId, version.version_id, version.label, "", {
+          isCurrent: () => activeRoute === "workbench" && activeWorkspaceId === workspaceId && lastWorkbenchPanel === "archive",
+          preserveContent: prepareSurface(elements.main, workspaceId),
+        }).then(rendered => completeSurface(elements.main, workspaceId, rendered));
+      }
     };
   }
 
@@ -327,7 +403,6 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     const workbenchPanel = mode === "C" ? (lastWorkbenchPanel || "match") : "archive";
     if (route === "workbench") showContentPanel(workbenchPanel);
     else applyPrimaryRoutePresentation(route);
-    elements.main.textContent = copy[1];
     elements.jobCount.textContent = `${stats.job_count || 0} 个`;
     elements.jobList.textContent = stats.job_count
       ? `已确认岗位 ${stats.job_count} 个；候选来源需逐项确认。`
@@ -348,35 +423,53 @@ export function createWorkbenchShell({ getApiBase, elements }) {
         ? { workspace_id: contextWorkspaceId, resume_version_id: null, job_snapshot_id: null, match_analysis_id: null, resume_branch_id: null, lineage_focus_version_id: null, merge_proposal_id: null }
         : { workspace_id: contextWorkspaceId });
     }
-    const resumeRender = resumeWorkspace.renderResumeList(
+    const routeResumeWorkspace = route === "version-map" ? versionMapWorkspace : resumeWorkspace;
+    const routeResumeSurface = route === "version-map" ? versionMapMain : elements.main;
+    const resumeRender = routeResumeWorkspace.renderResumeList(
       home,
       route,
       home.workspace?.workspace_id || activeWorkspaceId,
-      { isCurrent },
+      {
+        isCurrent,
+        isInteractive: () => activeRoute === route && activeWorkspaceId === (home.workspace?.workspace_id || activeWorkspaceId),
+        preserveContent: prepareSurface(routeResumeSurface),
+      },
     );
     if (!isCurrent()) return;
     if (route === "version-map") {
-      await resumeRender;
+      completeSurface(versionMapMain, activeWorkspaceId, await resumeRender);
       return;
     }
     if (route === "workbench") {
       jobMatching.renderJobList(home, activeWorkspaceId);
       if (mode === "C" && workbenchPanel === "match") {
-        void jobMatching.renderMain(home, activeWorkspaceId);
+        const workspaceId = activeWorkspaceId;
+        void jobMatching.renderMain(home, workspaceId, { isCurrent, preserveContent: prepareSurface(elements.match) })
+          .then(rendered => completeSurface(elements.match, workspaceId, rendered));
       } else if (home.recent_versions?.[0]) {
+        const workspaceId = activeWorkspaceId;
         void resumeWorkspace.renderResumePreview(
-          activeWorkspaceId,
+          workspaceId,
           home.recent_versions[0].version_id,
           home.recent_versions[0].label,
-        );
+          "",
+          { isCurrent, preserveContent: prepareSurface(elements.main) },
+        ).then(rendered => completeSurface(elements.main, workspaceId, rendered));
       } else {
         elements.main.className = "workbench-empty workbench-stage-empty";
         elements.main.textContent = "上传现有简历后，这里会展示结构化档案预览。";
+        completeSurface(elements.main, activeWorkspaceId, true);
       }
       operationMonitor.load(activeWorkspaceId);
     } else if (route === "applications") {
       elements.jobList.textContent = "投递记录只绑定已确认的岗位快照与简历版本。";
-      await applicationsBoard.render(activeWorkspaceId, "", "", { isCurrent });
+      const workspaceId = activeWorkspaceId;
+      const rendered = await applicationsBoard.render(workspaceId, "", "", {
+        isCurrent,
+        isInteractive: () => activeRoute === "applications" && activeWorkspaceId === (home.workspace?.workspace_id || activeWorkspaceId),
+        preserveContent: prepareSurface(applicationsMain),
+      });
+      completeSurface(applicationsMain, workspaceId, rendered);
     }
   }
 
@@ -410,9 +503,11 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       const page = await request("/v1/workbench/workspaces?limit=50");
       if (!isCurrent()) return;
       workspaces = page.items || [];
+      const previousWorkspaceId = activeWorkspaceId;
       if (!workspaces.some(item => item.workspace_id === activeWorkspaceId)) {
         activeWorkspaceId = workspaces[0]?.workspace_id || "";
       }
+      if (previousWorkspaceId && previousWorkspaceId !== activeWorkspaceId) invalidateRouteSurfaces();
       renderWorkspaceOptions();
       if (!activeWorkspaceId) {
         await renderHome({ stats: {}, recent_versions: [], workspace: null }, route, isCurrent);
@@ -427,7 +522,8 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     } catch (error) {
       if (isCurrent()) {
         setStatus(`工作台加载失败：${error.message}`, true);
-        elements.main.textContent = "数据未加载成功。已保留当前页面，可稍后重试。";
+        const surface = routeSurfaces[route === "workbench" ? preferredWorkbenchPanel() : route];
+        if (!hasRenderedContent(surface)) surface.textContent = "数据未加载成功，可稍后重试。";
       }
     } finally {
       if (isCurrent()) loading = false;
@@ -437,20 +533,35 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   elements.workspace.addEventListener("change", () => {
     activeWorkspaceId = elements.workspace.value;
     localStorage.setItem(WORKSPACE_KEY, activeWorkspaceId);
+    invalidateRouteSurfaces();
+    updateInteractiveGuards();
     load();
   });
   elements.archiveTab.addEventListener("click", () => {
     showContentPanel("archive");
     const version = currentHome?.recent_versions?.[0];
-    if (version) void resumeWorkspace.renderResumePreview(activeWorkspaceId, version.version_id, version.label);
+    if (version) {
+      const workspaceId = activeWorkspaceId;
+      void resumeWorkspace.renderResumePreview(workspaceId, version.version_id, version.label, "", {
+      isCurrent: () => activeRoute === "workbench" && activeWorkspaceId === currentHome?.workspace?.workspace_id,
+      preserveContent: prepareSurface(elements.main),
+      }).then(rendered => completeSurface(elements.main, workspaceId, rendered));
+    }
   });
   elements.matchTab.addEventListener("click", () => {
     showContentPanel("match");
-    if (currentHome) jobMatching.renderMain(currentHome, activeWorkspaceId);
+    if (currentHome) {
+      const workspaceId = activeWorkspaceId;
+      jobMatching.renderMain(currentHome, workspaceId, {
+        isCurrent: () => activeRoute === "workbench" && activeWorkspaceId === currentHome?.workspace?.workspace_id,
+        preserveContent: prepareSurface(elements.match),
+      }).then(rendered => completeSurface(elements.match, workspaceId, rendered));
+    }
   });
   async function activate(route) {
     const token = ++activationEpoch;
     activeRoute = route;
+    updateInteractiveGuards();
     applyPrimaryRoutePresentation(route);
     elements.actionStatus.textContent = route === "version-map"
       ? "选择版本后显示可用操作"

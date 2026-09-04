@@ -61,6 +61,9 @@ export function buildMatchEvaluationPayload(
 }
 
 export function createJobMatching({ request, elements, reloadHome, activatePanel = () => {} }) {
+  let lifecycleGuard = () => true;
+  const isLifecycleCurrent = () => lifecycleGuard();
+  const setLifecycleGuard = guard => { lifecycleGuard = typeof guard === "function" ? guard : () => true; };
   function button(label, action, className = "") {
     const value = document.createElement("button"); value.type = "button"; value.textContent = label; value.className = className; value.addEventListener("click", action); return value;
   }
@@ -276,29 +279,34 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function openJob(workspaceId, jobId) {
+    if (!isLifecycleCurrent()) return false;
     if (activatePanel() === false) return false;
     elements.main.textContent = "正在加载岗位快照…";
     try {
       const [job, snapshots] = await Promise.all([request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}`), request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}/snapshots`)]);
+      if (!isLifecycleCurrent()) return false;
       const snapshot = (snapshots.items || []).at(-1);
       if (!snapshot) throw new Error("岗位没有可用快照");
       selected.jobSnapshotId = snapshot.snapshot_id;
       updateWorkbenchContext({ workspace_id: workspaceId, job_snapshot_id: snapshot.snapshot_id });
       const source = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(snapshot.snapshot_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (!isLifecycleCurrent()) return false;
       const panel = document.createElement("section"); panel.className = "job-preview-panel";
       const title = document.createElement("h2"); title.textContent = `${job.company} · ${job.title}`;
       const meta = document.createElement("p"); meta.textContent = `快照 ${snapshot.snapshot_id} · ${snapshot.source_status}${snapshot.verified ? " · 已验证来源" : " · 手工来源"}`;
       const pre = document.createElement("pre"); pre.textContent = source.markdown;
       panel.append(title, meta, pre, button("使用此快照进行匹配", () => renderMatchChooser(workspaceId), "primary-action")); elements.main.replaceChildren(panel);
-    } catch (error) { elements.main.textContent = `岗位加载失败：${error.message}`; }
+    } catch (error) { if (isLifecycleCurrent()) elements.main.textContent = `岗位加载失败：${error.message}`; return false; }
   }
 
   async function renderMatchChooser(workspaceId) {
+    if (!isLifecycleCurrent()) return false;
     if (activatePanel() === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在加载可评估对象…";
     try {
       const [home, jobs] = await Promise.all([request(`/v1/workbench/workspaces/${encodeURIComponent(workspaceId)}/home`), request(`/v1/workbench/jobs?workspace_id=${encodeURIComponent(workspaceId)}`)]);
+      if (!isLifecycleCurrent()) return false;
       const panel = document.createElement("section"); panel.className = "match-chooser";
       const title = document.createElement("h2"); title.textContent = "匹配评估";
       const resume = document.createElement("select"); resume.setAttribute("aria-label", "已确认简历版本");
@@ -306,6 +314,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       const snapshot = document.createElement("select"); snapshot.setAttribute("aria-label", "岗位快照");
       for (const job of jobs.items || []) {
         const page = await request(`/v1/workbench/jobs/${encodeURIComponent(job.job_id)}/snapshots`);
+        if (!isLifecycleCurrent()) return false;
         for (const item of page.items || []) { const option = document.createElement("option"); option.value = item.snapshot_id; option.textContent = `${job.company} · ${job.title} · ${new Date(item.captured_at).toLocaleDateString()}`; snapshot.append(option); }
       }
       if (selected.jobSnapshotId) snapshot.value = selected.jobSnapshotId;
@@ -315,18 +324,22 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
         evaluate.disabled = true; status.textContent = "正在提取要求并验证简历证据…";
         try {
           const analysis = await evaluateMatch(workspaceId, resume.value, snapshot.value);
+          if (!isLifecycleCurrent()) return;
           selected.resumeVersionId = resume.value; selected.jobSnapshotId = snapshot.value;
           updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: resume.value, job_snapshot_id: snapshot.value, match_analysis_id: analysis.analysis_id });
           renderAnalysis(workspaceId, analysis);
         } catch (error) { status.textContent = `评估失败：${error.message}`; evaluate.disabled = false; }
       }, "primary-action");
       panel.append(title, label("简历版本", resume), label("岗位快照", snapshot), evaluate, status); elements.main.replaceChildren(panel);
-    } catch (error) { elements.main.textContent = `评估对象加载失败：${error.message}`; }
+    } catch (error) { if (isLifecycleCurrent()) elements.main.textContent = `评估对象加载失败：${error.message}`; return false; }
   }
 
   function label(text, control) { const value = document.createElement("label"); value.append(text, control); return value; }
 
-  async function renderAnalysis(workspaceId, analysis) {
+  async function renderAnalysis(workspaceId, analysis, options = {}) {
+    const localGuard = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+    const isCurrent = () => localGuard() && isLifecycleCurrent();
+    if (!isCurrent()) return false;
     if (activatePanel() === false) return false;
     elements.main.className = "";
     updateWorkbenchContext({
@@ -337,6 +350,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     });
     let job = null;
     try { job = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(analysis.job_snapshot_id)}`); } catch { /* Score data remains useful without snapshot metadata. */ }
+    if (!isCurrent()) return false;
     const panel = document.createElement("section"); panel.className = "match-analysis-panel";
     const total = Number(analysis.total_score || 0);
     const matched = (analysis.requirements || []).filter(item => item.verdict === "matched" || item.verdict === "partial");
@@ -391,6 +405,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     const actions = document.createElement("div"); actions.className = "draft-actions";
     actions.append(button("重新选择", () => renderMatchChooser(workspaceId)), button("生成证据建议", () => prepareSuggestions(workspaceId, analysis), "primary-action"));
     panel.append(heading, analysisMeta, dimensions, highlights, gapsSection, strategy, requirements, actions); elements.main.replaceChildren(panel);
+    return true;
   }
 
   function renderInsightCard(item, tone) {
@@ -403,38 +418,46 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function prepareSuggestions(workspaceId, analysis) {
+    if (!isLifecycleCurrent()) return false;
     if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在创建可恢复 Draft 并生成候选…";
     try {
       const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
+      if (!isLifecycleCurrent()) return false;
       const draftId = token("rd_match");
       const draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ draft_id: draftId, workspace_id: workspaceId, branch_id: version.branch_id }),
       });
+      if (!isLifecycleCurrent()) return false;
       await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysis.analysis_id)}/suggestion-candidates`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: workspaceId, draft_id: draft.draft_id }),
       });
+      if (!isLifecycleCurrent()) return false;
       return await renderSuggestions(workspaceId, analysis);
     } catch (error) {
+      if (!isLifecycleCurrent()) return false;
       elements.main.textContent = `建议准备失败：${error.message}`;
       return false;
     }
   }
 
   async function prepareTailoredResume(workspaceId, analysisId) {
+    if (!isLifecycleCurrent()) return false;
     if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在读取匹配分析并准备 AI 定制简历…";
     try {
       const analysis = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}`);
+      if (!isLifecycleCurrent()) return false;
       if (requiresEvidenceUpgrade(analysis)) {
         renderEvidenceUpgrade(workspaceId, analysis);
         return;
       }
       const page = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}/suggestions`);
+      if (!isLifecycleCurrent()) return false;
       const existing = (page.items || []).filter(suggestion => suggestion.change_type === "ai_tailor_v1");
       if (existing.length) {
         const latest = [...existing].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
@@ -447,14 +470,17 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       }
 
       const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
+      if (!isLifecycleCurrent()) return false;
       const draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ draft_id: token("rd_tailored"), workspace_id: workspaceId, branch_id: version.branch_id }),
       });
+      if (!isLifecycleCurrent()) return false;
       const generated = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}/tailored-resume-candidates`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: workspaceId, draft_id: draft.draft_id }),
       });
+      if (!isLifecycleCurrent()) return false;
       renderTailoredSuggestions(workspaceId, analysis, generated.items || [], {
         reused: generated.reused === true,
         attempts: generated.attempts || 1,
@@ -462,6 +488,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
         reflection: generated.reflection,
       });
     } catch (error) {
+      if (!isLifecycleCurrent()) return false;
       elements.main.textContent = `AI 定制简历准备失败：${error.message}`;
       throw error;
     }
@@ -600,11 +627,13 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
   }
 
   async function renderSuggestions(workspaceId, analysis) {
+    if (!isLifecycleCurrent()) return false;
     if (activatePanel({ resetScroll: true }) === false) return false;
     elements.main.className = "";
     elements.main.textContent = "正在加载建议…";
     try {
       const page = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysis.analysis_id)}/suggestions`);
+      if (!isLifecycleCurrent()) return false;
       const panel = document.createElement("section"); panel.className = "suggestion-panel";
       const title = document.createElement("h2"); title.textContent = "建议审批"; panel.append(title);
       if (!(page.items || []).length) { const empty = document.createElement("div"); empty.className = "workbench-empty"; empty.textContent = "尚无经证据验证的修改建议。缺口不会被自动改写为经历。"; panel.append(empty); }
@@ -621,30 +650,46 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       panel.append(button("返回分析", () => renderAnalysis(workspaceId, analysis))); elements.main.replaceChildren(panel);
       return true;
     } catch (error) {
+      if (!isLifecycleCurrent()) return false;
       elements.main.textContent = `建议加载失败：${error.message}`;
       return false;
     }
   }
 
-  async function renderMain(home, workspaceId) {
-    if (!(home.stats?.resume_count)) return;
-    if (!(home.stats?.job_count)) return;
-    elements.main.className = "workbench-match-restoring";
-    elements.main.textContent = "正在恢复最近一次岗位匹配…";
+  async function renderMain(home, workspaceId, options = {}) {
+    const localGuard = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+    const isCurrent = () => localGuard() && isLifecycleCurrent();
+    if (!isCurrent()) return false;
+    if (!(home.stats?.resume_count) || !(home.stats?.job_count)) {
+      elements.main.className = "workbench-match-placeholder";
+      elements.main.textContent = "当前求职目标还不能进行岗位匹配。";
+      return true;
+    }
+    const preserveContent = options.preserveContent === true;
+    if (!preserveContent) {
+      elements.main.className = "workbench-match-restoring";
+      elements.main.textContent = "正在恢复最近一次岗位匹配…";
+    }
     try {
       const page = await request(`/v1/workbench/match-analyses?workspace_id=${encodeURIComponent(workspaceId)}&limit=50`);
+      if (!isCurrent()) return false;
       const latest = selectRestorableAnalysis(page.items || []);
       if (latest) {
-        await renderAnalysis(workspaceId, latest);
-        return;
+        return await renderAnalysis(workspaceId, latest, { isCurrent });
       }
       elements.main.className = "workbench-match-placeholder";
       elements.main.textContent = "尚无匹配结果。选择右侧岗位，或点击上方“开始匹配分析”。";
+      return true;
     } catch (error) {
-      elements.main.className = "workbench-match-placeholder";
-      elements.main.textContent = `最近一次匹配结果恢复失败：${error.message}`;
+      if (!isCurrent()) return false;
+      if (preserveContent) elements.status.textContent = `岗位匹配刷新失败：${error.message}`;
+      else {
+        elements.main.className = "workbench-match-placeholder";
+        elements.main.textContent = `最近一次匹配结果恢复失败：${error.message}`;
+      }
+      return false;
     }
   }
 
-  return Object.freeze({ renderJobList, renderMain, renderJobForm, renderMatchChooser, renderAnalysis, prepareTailoredResume });
+  return Object.freeze({ renderJobList, renderMain, renderJobForm, renderMatchChooser, renderAnalysis, prepareTailoredResume, setLifecycleGuard });
 }

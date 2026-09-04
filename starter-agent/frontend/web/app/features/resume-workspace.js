@@ -31,6 +31,11 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
   let activeResumeId = null;
   let activeMap = null;
   let lifecycleIsCurrent = () => true;
+  let interactiveIsCurrent = () => true;
+
+  function setInteractiveGuard(guard) {
+    interactiveIsCurrent = typeof guard === "function" ? guard : () => true;
+  }
 
   function button(label, onClick, className = "") {
     const item = document.createElement("button");
@@ -125,11 +130,15 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     }
   }
 
-  async function renderResumePreview(workspaceId, versionId, label, sourceFilename = "") {
+  async function renderResumePreview(workspaceId, versionId, label, sourceFilename = "", options = {}) {
+    const preserveContent = options.preserveContent === true;
+    const isCurrent = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+    if (!isCurrent()) return false;
     elements.main.className = "";
-    elements.main.textContent = "正在加载简历预览…";
+    if (!preserveContent) elements.main.textContent = "正在加载简历预览…";
     try {
       const content = await request(`/v1/workbench/resume-versions/${encodeURIComponent(versionId)}/content?workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (!isCurrent()) return false;
       updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: versionId });
       updateProfileMetrics(content.markdown, content.profile);
       const panel = document.createElement("section"); panel.className = "resume-document-preview";
@@ -140,8 +149,12 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
       const documentBody = document.createElement("article"); documentBody.className = "resume-document-body";
       renderResumeDocument(documentBody, content.markdown, content.profile, label);
       panel.append(header, documentBody); elements.main.replaceChildren(panel);
+      return true;
     } catch (error) {
-      elements.main.textContent = `简历已导入，但预览加载失败：${error.message}`;
+      if (!isCurrent()) return false;
+      if (preserveContent) elements.status.textContent = `简历预览刷新失败：${error.message}`;
+      else elements.main.textContent = `简历已导入，但预览加载失败：${error.message}`;
+      return false;
     }
   }
 
@@ -216,16 +229,18 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
 
   async function renderVersionMap(workspaceId, resumeId, options = {}) {
     if (typeof options.isCurrent === "function") lifecycleIsCurrent = options.isCurrent;
+    if (typeof options.isInteractive === "function") interactiveIsCurrent = options.isInteractive;
     const isCurrent = lifecycleIsCurrent;
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
     activeResumeId = resumeId;
-    elements.main.textContent = "正在加载版本血缘…";
+    const preserveContent = options.preserveContent === true;
+    if (!preserveContent) elements.main.textContent = "正在加载版本血缘…";
     try {
       const [map, savedPreference] = await Promise.all([
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/version-map`),
         request(`/v1/workbench/resumes/${encodeURIComponent(resumeId)}/view-preference`).catch(error => error.status === 404 ? null : Promise.reject(error)),
       ]);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       activeMap = map;
       let preference = savedPreference || { node_positions: {}, collapsed_branch_ids: [], viewport_x: 0, viewport_y: 0, viewport_zoom: 1, revision: null };
       let preferenceTimer = null;
@@ -243,7 +258,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         }, 250);
       };
       graph.render(elements.main, map, async (node, event) => {
-        if (!isCurrent()) return;
+        if (!interactiveIsCurrent()) return;
         if (event.shiftKey && selectedNode && selectedNode.version_id !== node.version_id) {
           await renderDiff(workspaceId, selectedNode, node);
           return;
@@ -251,19 +266,25 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
         selectedNode = node;
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: node.version_id, resume_branch_id: node.branch_id, lineage_focus_version_id: node.version_id });
         onVersionSelect(node, { inspectorMount: elements.jobs });
-        renderInspector(workspaceId, node, { isCurrent });
+        renderInspector(workspaceId, node, { isCurrent: interactiveIsCurrent });
       }, { preference, onPreferenceChange: savePreference, selectedVersionId: selectedNode?.version_id });
       const restoredNode = (map.nodes || []).find(node => node.version_id === selectedNode?.version_id);
       if (restoredNode) {
         selectedNode = restoredNode;
         updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: restoredNode.version_id, resume_branch_id: restoredNode.branch_id, lineage_focus_version_id: restoredNode.version_id });
         onVersionSelect(restoredNode, { inspectorMount: elements.jobs });
-        renderInspector(workspaceId, restoredNode, { isCurrent });
+        renderInspector(workspaceId, restoredNode, { isCurrent: interactiveIsCurrent });
       } else if (selectedNode) {
         selectedNode = null;
         onVersionSelect(null);
       }
-    } catch (error) { if (isCurrent()) elements.main.textContent = `版本地图加载失败：${error.message}`; }
+      return true;
+    } catch (error) {
+      if (!isCurrent()) return false;
+      if (preserveContent) elements.status.textContent = `版本地图刷新失败：${error.message}`;
+      else elements.main.textContent = `版本地图加载失败：${error.message}`;
+      return false;
+    }
   }
 
   function renderInspector(workspaceId, node, { isCurrent = lifecycleIsCurrent } = {}) {
@@ -472,7 +493,7 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     elements.main.replaceChildren(panel); refresh();
   }
 
-  function renderResumeList(home, route, workspaceId, { isCurrent = () => true } = {}) {
+  function renderResumeList(home, route, workspaceId, { isCurrent = () => true, isInteractive = () => true, preserveContent = false } = {}) {
     if (!isCurrent()) return;
     const profileName = document.querySelector("#workbenchProfileName");
     const profileCaption = document.querySelector("#workbenchProfileCaption");
@@ -488,6 +509,10 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
       if (profileName) profileName.textContent = home.workspace?.name || "我的档案";
       if (profileCaption) profileCaption.textContent = "尚未导入简历";
       updateProfileMetrics("");
+      if (route === "version-map") {
+        elements.main.textContent = "当前求职目标还没有可展示的版本。";
+        return true;
+      }
       return;
     }
     if (profileName) profileName.textContent = home.recent_versions[0].label;
@@ -495,8 +520,8 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     void request(`/v1/workbench/resume-versions/${encodeURIComponent(home.recent_versions[0].version_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`)
       .then(content => { if (isCurrent()) updateProfileMetrics(content.markdown, content.profile); })
       .catch(() => { if (isCurrent()) updateProfileMetrics(""); });
-    if (route === "version-map") return renderVersionMap(workspaceId, home.recent_versions[0].resume_id, { isCurrent });
+    if (route === "version-map") return renderVersionMap(workspaceId, home.recent_versions[0].resume_id, { isCurrent, isInteractive, preserveContent });
   }
 
-  return Object.freeze({ renderImport, renderResumeList, renderResumePreview, renderVersionMap });
+  return Object.freeze({ renderImport, renderResumeList, renderResumePreview, renderVersionMap, setInteractiveGuard });
 }
