@@ -1,4 +1,5 @@
 import { updateWorkbenchContext } from "../workbench-context.js";
+import { renderTailoredPreview } from "./tailored-preview.js?v=compact-ui";
 
 const selected = { resumeVersionId: "", jobSnapshotId: "" };
 
@@ -299,7 +300,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     } catch (error) { if (isLifecycleCurrent()) elements.main.textContent = `岗位加载失败：${error.message}`; return false; }
   }
 
-  async function renderMatchChooser(workspaceId) {
+  async function renderMatchChooser(workspaceId, { tailor = false } = {}) {
     if (!isLifecycleCurrent()) return false;
     if (activatePanel() === false) return false;
     elements.main.className = "";
@@ -327,7 +328,8 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
           if (!isLifecycleCurrent()) return;
           selected.resumeVersionId = resume.value; selected.jobSnapshotId = snapshot.value;
           updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: resume.value, job_snapshot_id: snapshot.value, match_analysis_id: analysis.analysis_id });
-          renderAnalysis(workspaceId, analysis);
+          if (tailor) await prepareTailoredResume(workspaceId, analysis.analysis_id);
+          else renderAnalysis(workspaceId, analysis);
         } catch (error) { status.textContent = `评估失败：${error.message}`; evaluate.disabled = false; }
       }, "primary-action");
       panel.append(title, label("简历版本", resume), label("岗位快照", snapshot), evaluate, status); elements.main.replaceChildren(panel);
@@ -471,9 +473,17 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
 
       const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
       if (!isLifecycleCurrent()) return false;
+      const job = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(analysis.job_snapshot_id)}`);
+      if (!isLifecycleCurrent()) return false;
+      const branch = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/branches`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_id: token("rb_tailored"), resume_id: version.resume_id,
+          name: `${job.company || "目标公司"} · ${job.title || "目标岗位"}`.slice(0, 160), branch_type: "company", job_snapshot_id: analysis.job_snapshot_id }),
+      });
+      if (!isLifecycleCurrent()) return false;
       const draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft_id: token("rd_tailored"), workspace_id: workspaceId, branch_id: version.branch_id }),
+        body: JSON.stringify({ draft_id: token("rd_tailored"), workspace_id: workspaceId, branch_id: branch.branch_id }),
       });
       if (!isLifecycleCurrent()) return false;
       const generated = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}/tailored-resume-candidates`, {
@@ -525,6 +535,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
 
   function renderTailoredSuggestions(workspaceId, analysis, suggestions, diagnostics = {}) {
     if (activatePanel({ resetScroll: true }) === false) return false;
+    const ownerGuard = lifecycleGuard;
     elements.main.className = "";
     const panel = document.createElement("section"); panel.className = "suggestion-panel tailored-suggestion-panel";
     const header = document.createElement("header"); header.className = "tailored-suggestion-header";
@@ -592,6 +603,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
         reject.disabled = true;
         try {
           await request(`/v1/workbench/suggestions/${encodeURIComponent(suggestion.suggestion_id)}/decisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "reject" }) });
+          suggestion.status = "rejected";
           checkbox.checked = false; checkbox.disabled = true; editor.disabled = true; state.textContent = "已拒绝"; status.textContent = "建议已拒绝；Draft 和正式版本均未改变。";
         } catch (error) { status.textContent = `拒绝失败：${error.message}`; reject.disabled = false; }
       });
@@ -614,15 +626,28 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
           body: JSON.stringify({ workspace_id: workspaceId, accept_ids: acceptIds, reject_ids: [], edited_text_by_id: edited }),
         });
         for (const item of selectedCards) {
+          item.suggestion.status = "accepted";
           item.checkbox.disabled = true; item.editor.disabled = true; item.reject.disabled = true; item.state.textContent = "已采纳";
           item.status.textContent = "已应用到 Draft。";
         }
         batchStatus.textContent = `已批量应用 ${selectedCards.length} 条建议到 Draft；正式版本未改变。`;
+        // A batch advances the Draft revision; remaining suggestions must be refreshed before reuse.
+        for (const item of cards) { item.checkbox.disabled = true; item.editor.disabled = true; item.reject.disabled = true; }
       } catch (error) { batchStatus.textContent = `批量采纳失败：${error.message}`; acceptSelected.disabled = false; }
     }, "primary-action");
     acceptSelected.disabled = !cards.some(item => item.suggestion.status === "pending");
     const batchBar = document.createElement("div"); batchBar.className = "tailored-batch-bar";
-    batchBar.append(button("返回分析", () => renderAnalysis(workspaceId, analysis)), batchStatus, acceptSelected);
+    const preview = button("查看完整 Draft / 保存版本", async () => {
+      preview.disabled = true;
+      try {
+        await renderTailoredPreview({ request, container: elements.main, workspaceId, analysis,
+          draftId: values[0].target_draft_id, isCurrent: () => ownerGuard() && lifecycleGuard === ownerGuard,
+          onBack: () => prepareTailoredResume(workspaceId, analysis.analysis_id) });
+      } catch (error) { batchStatus.textContent = `预览加载失败：${error.message}`; }
+      finally { preview.disabled = false; }
+    });
+    preview.disabled = !values.length;
+    batchBar.append(button("返回分析", () => renderAnalysis(workspaceId, analysis)), batchStatus, acceptSelected, preview);
     panel.append(batchBar); elements.main.replaceChildren(panel);
   }
 

@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -4555,14 +4555,12 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         mark_applied: "请根据当前工作台中的岗位和简历版本，帮我核对投递前的最后检查项，并给出投递后的跟进建议。不要替我记录投递。",
       };
       if (action === "tailor_resume") {
-        if (!context.match_analysis_id) {
-          card.textContent = "请先选择岗位并完成一次匹配分析，再生成 AI 定制简历。";
-          return;
-        }
         card.textContent = "正在基于当前匹配分析创建可恢复 Draft…";
         try {
           await workbenchShell.tailorResume(context);
-          card.textContent = "定制建议已生成。请在中间区域逐条核对、编辑并决定是否接受。";
+          card.textContent = context.match_analysis_id
+            ? "请在中间区域核对建议，采纳后可预览完整 Draft 并保存为岗位定制版本。"
+            : "请在中间选择简历和岗位，开始匹配后将继续生成 AI 定制建议。";
         } catch (error) {
           card.textContent = `AI 定制简历未生成：${error.message}`;
         }

@@ -310,6 +310,24 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
       if (!confirmed) item.title = "请先确认版本；待确认版本不可导出。";
     }
     if (!confirmed) exportStatus.textContent = "请先确认版本，之后才能导出 PDF 或 Word。";
+    if (node.status === "pending_confirmation") {
+      const confirm = button("确认此版本", async () => {
+        if (!isCurrent()) return;
+        confirm.disabled = true;
+        try {
+          const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(node.version_id)}`);
+          if (!isCurrent()) return;
+          if (version.status !== "confirmed") await request(`/v1/workbench/resume-versions/${encodeURIComponent(node.version_id)}/confirm`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspace_id: workspaceId, expected_revision: version.revision }),
+          });
+          exportStatus.textContent = "版本已确认，可导出。";
+          exportPdf.disabled = false; exportWord.disabled = false;
+          meta.textContent = `${node.node_type} · confirmed`;
+        } catch (error) { exportStatus.textContent = `确认失败：${error.message}`; confirm.disabled = false; }
+      });
+      panel.append(confirm);
+    }
     panel.append(title, meta, open, compare, branch, merge, template, exportPdf, exportWord, exportStatus); elements.jobs.append(panel);
   }
 

@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable";
-import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable";
+import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview";
+import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js?v=compact-ui&motion=stable";
@@ -574,8 +574,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     if (activeRoute !== "workbench") throw new Error("请先返回工作台，再生成 AI 定制简历");
     const workspaceId = context?.workspace_id || activeWorkspaceId;
     const analysisId = context?.match_analysis_id;
-    if (!workspaceId || !analysisId) throw new Error("需要当前求职目标和匹配分析");
+    if (!workspaceId) throw new Error("需要当前求职目标");
     showContentPanel("match");
+    if (!analysisId) return jobMatching.renderMatchChooser(workspaceId, { tailor: true });
     await jobMatching.prepareTailoredResume(workspaceId, analysisId);
   }
   return Object.freeze({

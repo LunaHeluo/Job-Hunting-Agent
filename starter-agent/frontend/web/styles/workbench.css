@@ -214,3 +214,12 @@ body.workbench-active .workbench-chat-dock .composer-note { font-size: var(--wb-
 @media (max-width:1279px) {
   .workspace-scroll-region[data-content-panel="archive"][data-has-resume="true"] > .workbench-section-heading { display: none; }
 }
+.tailored-preview { padding: 20px; min-width: 0; }
+.tailored-preview > p { font-size: 13px; color: #64748b; line-height: 1.6; }
+.tailored-preview-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.tailored-preview-columns > section { min-width: 0; }
+.tailored-preview-columns h3 { font-size: 14px; }
+.tailored-preview-document { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.8; background: #fff; border: 1px solid #dce3eb; border-radius: 12px; padding: 18px; margin: 0; }
+.tailored-changed-line { background: #e5f3e9; }
+.tailored-preview > label { display: grid; gap: 8px; font-size: 13px; }
+.tailored-preview > label input { width: 100%; box-sizing: border-box; padding: 10px; }
