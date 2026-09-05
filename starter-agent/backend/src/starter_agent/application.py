@@ -1083,6 +1083,7 @@ class ApplicationService:
         on_tool_event: Callable[[dict], Awaitable[None]] | None = None,
         tool_governance_enabled: bool = True,
         allow_tools: bool = True,
+        resume_context: str | None = None,
     ) -> ChatResult:
         # Tool-result governance is a server safety invariant, not a client option.
         tool_governance_enabled = True
@@ -1135,6 +1136,11 @@ class ApplicationService:
             on_tool_event=on_tool_event,
             logger=logger,
         )
+        if resume_context:
+            # Ephemeral context: do not store resume bodies in conversation history.
+            messages.insert(max(0, len(messages) - 1), Message(role="user", content=resume_context))
+            raw_context_tokens = self.token_counter.messages(messages, self.runtime.tools.schemas()).tokens
+            corrected_context_tokens = math.ceil(raw_context_tokens * correction_coefficient)
         hard_prompt_tokens = int(
             self.settings.context.max_total_tokens
             * self.settings.context.hard_prompt_ratio

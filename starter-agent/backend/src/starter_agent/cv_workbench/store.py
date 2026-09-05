@@ -1271,6 +1271,24 @@ class SQLiteWorkbenchStore:
             for row in rows
         )
 
+    def replace_resume_projections(self, models: list[Resume | MatchAnalysis], *, principal: str) -> None:
+        """Archive replaced profiles and expire analyses atomically, retaining historical refs."""
+        with Session(self.engine) as db, db.begin():
+            for model in models:
+                if not isinstance(model, (Resume, MatchAnalysis)):
+                    raise WorkbenchStoreError("invalid_replacement_projection")
+                _, entity_id = self._identity(model)
+                row = self._owned_row(db, entity_id, principal)
+                previous = self._parse(row, type(model))
+                if row.revision != model.revision - 1:
+                    raise RevisionConflictError(entity_id, row.revision)
+                self._validate_update(previous, model)
+                assert_transition(previous.status, model.status)
+                row.payload_json = model.model_dump_json()
+                row.revision = model.revision
+                row.status = self._status(model)
+                row.archived = self._is_archived(model)
+
     def physical_delete(self, entity_id: str, *, principal: str) -> None:
         with Session(self.engine) as db, db.begin():
             row = self._owned_row(db, entity_id, principal)

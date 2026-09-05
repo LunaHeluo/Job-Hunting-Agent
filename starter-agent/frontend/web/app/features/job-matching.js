@@ -698,7 +698,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     try {
       const page = await request(`/v1/workbench/match-analyses?workspace_id=${encodeURIComponent(workspaceId)}&limit=50`);
       if (!isCurrent()) return false;
-      const latest = selectRestorableAnalysis(page.items || []);
+      const latest = selectRestorableAnalysis((page.items || []).filter(item => item.status !== "stale"));
       if (latest) {
         return await renderAnalysis(workspaceId, latest, { isCurrent });
       }

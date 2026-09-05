@@ -122,6 +122,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     try {
       const imported = await request("/v1/workbench/resumes/imports/upload", { method: "POST", body: data });
       await request(`/v1/workbench/workspaces/${encodeURIComponent(workspaceId)}/active-resume/${encodeURIComponent(imported.result.resume_id)}`, { method: "POST" });
+      updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: imported.result.version_id,
+        resume_branch_id: null, job_snapshot_id: null, match_analysis_id: null,
+        lineage_focus_version_id: null, merge_proposal_id: null });
       await reloadHome();
       await renderResumePreview(workspaceId, imported.result.version_id, imported.resume_name || fallbackName, imported.source_filename);
     } catch (error) {
@@ -516,7 +519,10 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
     const profileName = document.querySelector("#workbenchProfileName");
     const profileCaption = document.querySelector("#workbenchProfileCaption");
     const reupload = document.querySelector("#workbenchResumeReupload");
-    if (reupload) reupload.onclick = () => renderImport(workspaceId || null);
+    if (reupload) {
+      reupload.textContent = home.recent_versions?.length ? "重新上传" : "上传简历";
+      reupload.onclick = () => renderImport(workspaceId || null);
+    }
     if (!workspaceId) {
       if (profileName) profileName.textContent = "我的档案";
       if (profileCaption) profileCaption.textContent = "导入简历后生成摘要";

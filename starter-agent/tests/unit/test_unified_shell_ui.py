@@ -108,10 +108,10 @@ def test_frontend_assets_use_compact_ui_cache_namespace() -> None:
 
     assert 'href="./styles/app.css?v=compact-ui&amp;layout=stable&amp;motion=stable&amp;tailor=preview"' in HTML
     assert '@import url("./workbench.css?v=compact-ui&layout=stable&motion=stable&tailor=preview")' in app_css
-    assert 'src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable&amp;tailor=preview"' in HTML
-    assert 'from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview"' in APP
-    assert 'from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview"' in workbench_shell
-    assert 'from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview"' in workbench_shell
+    assert 'src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable&amp;tailor=preview&amp;resume=current"' in HTML
+    assert 'from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview&resume=current"' in APP
+    assert 'from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview&resume=current"' in workbench_shell
+    assert 'from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview&resume=current"' in workbench_shell
     assert 'from "./applications-board.js?v=compact-ui&motion=stable"' in workbench_shell
 
 

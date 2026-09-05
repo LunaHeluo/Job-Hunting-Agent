@@ -15,6 +15,8 @@ from starter_agent.cv_workbench.contracts import (
     Job,
     JobSnapshot,
     JobUserStatus,
+    MatchAnalysis,
+    MatchStatus,
     OperationStatus,
     PriorityJobSummary,
     RecentApplicationEventSummary,
@@ -268,6 +270,7 @@ class WorkspaceService:
             resume_id, workspace_id, principal=principal
         )
         archived: list[str] = []
+        replacements = []
         for resume in self._all_linked(Resume, workspace_id, principal):
             if resume.resume_id == resume_id or resume.status != ResumeStatus.ACTIVE:
                 continue
@@ -280,10 +283,20 @@ class WorkspaceService:
                     "allowed_actions": (),
                 }
             )
-            self.store.update(
-                updated, principal=principal, expected_revision=resume.revision
-            )
+            replacements.append(updated)
             archived.append(resume.resume_id)
+        old_versions = {
+            version.version_id
+            for old_id in archived
+            for version in self.store.lineage(old_id, principal=principal)
+        }
+        for analysis in self._all_direct(MatchAnalysis, workspace_id, principal):
+            if analysis.resume_version_id in old_versions and analysis.status in {MatchStatus.VALIDATED, MatchStatus.PARTIAL}:
+                replacements.append(MatchAnalysis.model_validate(analysis.model_dump() | {
+                    "status": MatchStatus.STALE, "stale_reason": "当前档案已重新上传，请使用新简历重新匹配。",
+                    "revision": analysis.revision + 1, "allowed_actions": (),
+                }))
+        self.store.replace_resume_projections(replacements, principal=principal)
         self.store.append_event(
             workspace_id,
             principal=principal,

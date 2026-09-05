@@ -12,6 +12,8 @@ from starter_agent.cv_workbench.contracts import (
     CONTRACT_VERSION,
     Job,
     JobSnapshot,
+    MatchAnalysis,
+    MatchStatus,
     OperationStatus,
     Resume,
     ResumeStatus,
@@ -234,6 +236,11 @@ def test_replacing_active_resume_archives_old_resume_but_preserves_it(tmp_path: 
     try:
         create_workspace(service)
         create_resume_family(store)
+        create_job_and_application(store)
+        payload = json.loads((FIXTURES / "analysis-validated.json").read_text(encoding="utf-8"))
+        payload["resume_version_id"] = "rv_master_v1"
+        analysis = MatchAnalysis.model_validate(payload)
+        store.create(analysis, principal=PRINCIPAL)
         service.attach_resume("ws_demo", "res_demo", principal=PRINCIPAL)
         current = store.get(Resume, "res_demo", principal=PRINCIPAL)
         replacement = Resume.model_validate(
@@ -255,8 +262,10 @@ def test_replacing_active_resume_archives_old_resume_but_preserves_it(tmp_path: 
         assert archived == ("res_demo",)
         assert store.get(Resume, "res_demo", principal=PRINCIPAL).status == ResumeStatus.ARCHIVED
         assert service.home("ws_demo", principal=PRINCIPAL).resume_ids == ("res_replacement",)
+        assert store.get(MatchAnalysis, analysis.analysis_id, principal=PRINCIPAL).status == MatchStatus.STALE
+        assert store.get(ResumeVersion, "rv_master_v1", principal=PRINCIPAL).status == ResumeVersionStatus.CONFIRMED
     finally:
-        store.close()
+        store.engine.dispose()
 
 
 def test_runtime_feature_provider_reflects_composed_application() -> None:

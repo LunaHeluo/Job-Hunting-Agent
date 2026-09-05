@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview&resume=current";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";

@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview";
-import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview";
+import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview&resume=current";
+import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview&resume=current";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js?v=compact-ui&motion=stable";
