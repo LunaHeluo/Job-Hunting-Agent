@@ -235,6 +235,11 @@ class SuggestionGenerateBody(ApiModel):
     draft_id: str
 
 
+class TailoringGenerateBody(SuggestionGenerateBody):
+    block_ids: tuple[str, ...] = Field(default=(), max_length=8)
+    generation_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")
+
+
 class SuggestionBatchDecisionBody(ApiModel):
     workspace_id: str
     accept_ids: tuple[str, ...] = ()
@@ -925,7 +930,7 @@ def create_workbench_router(
     )
     async def generate_tailored_resume(
         analysis_id: str,
-        body: SuggestionGenerateBody,
+        body: TailoringGenerateBody,
         actor: ManagementPrincipal = Depends(get_management_principal),
     ):
         runtime = runtime_provider()
@@ -942,6 +947,8 @@ def create_workbench_router(
                     workspace_id=body.workspace_id,
                     analysis_id=analysis_id,
                     draft_id=body.draft_id,
+                    generation_id=body.generation_id,
+                    block_ids=body.block_ids,
                 ),
                 principal=principal(actor),
             )
@@ -949,6 +956,13 @@ def create_workbench_router(
             raise
         except (WorkbenchStoreError, VersioningError, ValueError, RuntimeError) as error:
             raise _translate(error) from error
+
+    @router.get("/drafts/{draft_id}/tailoring-generations")
+    def tailoring_history(draft_id: str, analysis_id: str, actor: ManagementPrincipal = Depends(get_management_principal)):
+        service = runtime_provider().tailoring
+        if service is None:
+            raise WorkbenchApiError("tailoring_provider_unavailable", "AI tailoring is not configured.", status_code=503)
+        return {"items": _call(service.history, draft_id, analysis_id=analysis_id, principal=principal(actor))}
 
     @router.post("/suggestions/batch-decisions")
     def decide_suggestions_batch(

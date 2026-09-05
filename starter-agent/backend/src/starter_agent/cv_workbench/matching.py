@@ -43,7 +43,7 @@ from starter_agent.cv_workbench.tailoring_evidence import ResumeEvidenceSelector
 from starter_agent.knowledge.models import KnowledgeScope
 
 
-RULE_VERSION = "match-rule.v2"
+RULE_VERSION = "match-rule.v2.3"
 VALIDATOR_VERSION = "match-result-validator.v2"
 CATEGORY_WEIGHTS = {
     "required": Decimal("0.60"),
@@ -74,8 +74,18 @@ def deterministic_requirements(
     """Build requirements whose positive verdicts have scoped chunk evidence."""
     output: list[CandidateRequirement] = []
     seen: set[str] = set()
+    section_category = None
+    headings = {"岗位职责": "responsibility", "工作职责": "responsibility", "职责": "responsibility",
+                "responsibilities": "responsibility", "必需要求": "required", "岗位要求": "required",
+                "任职要求": "required", "requirements": "required", "加分项": "preferred", "preferred": "preferred"}
     for raw in job_text.splitlines():
         text = re.sub(r"^[\s#>*+\-\d.)、]+", "", raw).strip()
+        heading = text.rstrip(":：").casefold()
+        if heading in headings:
+            section_category = headings[heading]
+            continue
+        if raw.lstrip().startswith("#") or re.match(r"^(?:公司|地点|company|location)\s*[:：]", text, re.I):
+            continue
         if len(text) < 4 or text.casefold() in seen:
             continue
         seen.add(text.casefold())
@@ -83,9 +93,9 @@ def deterministic_requirements(
         category = (
             "preferred"
             if any(word in folded for word in ("preferred", "plus", "优先", "加分"))
-            else "responsibility"
+            else section_category or "responsibility"
             if any(word in folded for word in ("responsib", "负责", "职责"))
-            else "required"
+            else section_category or "required"
         )
         selection = selector.select(
             text,
@@ -94,6 +104,8 @@ def deterministic_requirements(
             document_id=document_id,
             markdown=resume_text,
         )
+        if not selection.query_terms:
+            continue
         covered_count = sum(
             term in selection.covered_terms for term in selection.query_terms
         )
