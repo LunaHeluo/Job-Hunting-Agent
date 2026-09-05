@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <title>Starter Agent</title>
-  <link rel="stylesheet" href="./styles/app.css?v=compact-ui&amp;layout=stable&amp;motion=stable&amp;tailor=preview">
+  <link rel="stylesheet" href="./styles/app.css?v=tailoring-tab-v1">
 </head>
 <body>
   <main id="appShell" class="app-shell">
@@ -44,20 +44,17 @@
               <span><strong id="workbenchSkillCount">—</strong> 技能</span>
             </div>
             <div class="workbench-profile-footer"><span>档案</span><button id="workbenchResumeReupload" type="button">上传简历</button></div>
-            <div id="sessionList" class="session-list"><div class="session-empty">正在加载会话...</div></div>
           </section>
-          <section id="workbenchAgentCard" class="workbench-card workbench-agent-card" aria-labelledby="workbenchAgentTitle">
-            <div class="workbench-section-heading workbench-agent-heading">
-              <h2 id="workbenchAgentTitle">Starter Agent</h2>
-              <div class="workbench-agent-heading-actions">
-                <button id="workbenchTailorResumeButton" class="workbench-agent-tailor" type="button" hidden>AI 定制简历</button>
-                <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
-              </div>
-            </div>
+          <section id="workbenchAgentCard" class="workbench-card workbench-agent-card" aria-label="简历助手">
             <div id="workbenchAgentConversationActions" class="workbench-agent-conversation-actions" aria-label="对话管理">
               <button id="newSessionButton" type="button" title="新建会话">新建</button>
               <button id="clearAllSessionsButton" class="clear-all-sessions" type="button">清除全部</button>
+              <button id="workbenchSettingsButton" class="workbench-agent-settings" type="button" aria-label="打开设置与高级功能">设置</button>
             </div>
+            <details class="workbench-session-picker">
+              <summary>历史会话</summary>
+              <div id="sessionList" class="session-list"><div class="session-empty">正在加载会话...</div></div>
+            </details>
             <div id="workbenchChatDock" class="workbench-chat-dock" aria-label="工作台内对话">
               <div id="status" class="status">准备连接本地 API</div>
               <div id="tokenBudget" class="token-budget">本会话 tokens: 0 / 128k</div>
@@ -66,20 +63,18 @@
                 <div id="chatConfirmationCards" class="chat-confirmation-cards" aria-live="polite"></div>
                 <div id="delegationTaskCards" class="delegation-task-cards" aria-live="polite"></div>
                 <section id="delegationRunDetail" class="delegation-run-detail" hidden aria-live="polite"></section>
+                <div id="workbenchAgentSuggestions" class="workbench-agent-suggestions">
+                  <span class="workbench-agent-suggestions-label">你可以试试</span>
+                  <div id="workbenchAgentActions" class="workbench-agent-actions">
+                    <button type="button" data-agent-action="explain_score">解释当前分数</button>
+                    <button type="button" data-agent-action="rewrite_section">优化匹配短板</button>
+                    <button type="button" data-agent-action="compare_versions" hidden>比较简历版本</button>
+                    <button type="button" data-agent-action="review_merge" hidden>审查合并方案</button>
+                    <button type="button" data-agent-action="confirm_version" hidden>确认待确认版本</button>
+                    <button type="button" data-agent-action="mark_applied" hidden>投递前检查</button>
+                  </div>
+                </div>
                 <footer class="composer-wrap"><div id="toolMenu" class="tool-menu" hidden></div><form id="composer" class="composer"><textarea id="messageInput" placeholder="输入消息，Enter 发送" rows="2"></textarea><button id="clearButton" type="button">清空</button><button id="sendButton" class="send" type="submit">发送</button></form><div class="composer-note">Shift + Enter 换行</div></footer>
-              </div>
-            </div>
-            <div id="workbenchAgentSuggestions" class="workbench-agent-suggestions">
-              <span class="workbench-agent-suggestions-label">你可以试试</span>
-              <div id="workbenchAgentActions" class="workbench-agent-actions">
-                <button type="button" data-agent-action="ai_edit_resume">AI 修改简历</button>
-                <button type="button" data-agent-action="explain_score">解释当前分数</button>
-                <button type="button" data-agent-action="tailor_resume">AI 定制简历</button>
-                <button type="button" data-agent-action="rewrite_section">优化匹配短板</button>
-                <button type="button" data-agent-action="compare_versions" hidden>比较简历版本</button>
-                <button type="button" data-agent-action="review_merge" hidden>审查合并方案</button>
-                <button type="button" data-agent-action="confirm_version" hidden>确认待确认版本</button>
-                <button type="button" data-agent-action="mark_applied" hidden>投递前检查</button>
               </div>
             </div>
             <details class="workbench-agent-context-panel">
@@ -95,25 +90,16 @@
         </aside>
         <main id="workspaceCanvas" class="workbench-main" aria-labelledby="workbenchTitle">
           <section class="workbench-card workbench-canvas">
-            <section id="workbenchStageCallout" class="workbench-stage-callout" aria-live="polite">
-              <div>
-                <span id="workbenchStageEyebrow">当前阶段 · 未建档</span>
-                <h2 id="workbenchStageTitle">先建立可信简历档案</h2>
-                <p id="workbenchStageDescription">上传 DOCX 或 PDF，解析完成后再进入岗位匹配。</p>
-              </div>
-              <div class="workbench-stage-actions">
-                <button id="workbenchStageSecondary" type="button" hidden></button>
-                <button id="workbenchStagePrimary" class="primary-action" type="button">上传简历</button>
-              </div>
-            </section>
             <nav id="workbenchContentTabs" class="workbench-content-tabs" aria-label="工作区内容">
               <button id="workbenchArchiveTab" type="button" aria-current="page">档案</button>
               <button id="workbenchMatchTab" type="button">岗位匹配</button>
+              <button id="workbenchTailorTab" type="button">定制简历</button>
             </nav>
             <div class="workspace-scroll-region" data-scroll-key="center">
               <div class="workbench-section-heading"><div><span id="workbenchModeLabel" class="status-label">档案</span><h1 id="workbenchTitle">建立你的第一份简历档案</h1></div></div>
               <div id="workbenchMainContent" class="workbench-empty workbench-route-surface">工作台只显示后端确认的数据；当前没有可展示内容。</div>
               <div id="workbenchMatchContent" class="workbench-empty workbench-route-surface" hidden>添加并确认 JD 后，可在这里查看匹配分数与证据。</div>
+              <div id="workbenchTailorContent" class="workbench-route-surface" hidden></div>
               <div id="workbenchVersionMapContent" class="workbench-route-surface" hidden></div>
               <div id="workbenchApplicationsContent" class="workbench-route-surface" hidden></div>
             </div>
@@ -434,6 +420,6 @@
     </section>
   </div>
 
-  <script type="module" src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable&amp;tailor=preview&amp;resume=current"></script>
+  <script type="module" src="./app.js?v=compact-ui&amp;shell=routes&amp;guard=active&amp;motion=stable&amp;tailor=preview&amp;resume=current&amp;ui=tailoring-tab-v1"></script>
 </body>
 </html>

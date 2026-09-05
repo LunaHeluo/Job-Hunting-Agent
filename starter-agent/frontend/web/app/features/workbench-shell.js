@@ -1,6 +1,6 @@
 const WORKSPACE_KEY = "resume-agent.current-workspace";
-import { createResumeWorkspace } from "./resume-workspace.js?v=compact-ui&motion=stable&tailor=preview&resume=current";
-import { createJobMatching } from "./job-matching.js?v=compact-ui&guard=active&motion=stable&tailor=preview&resume=current";
+import { createResumeWorkspace } from "./resume-workspace.js?v=tailoring-tab-v1";
+import { createJobMatching } from "./job-matching.js?v=tailoring-tab-v1";
 import { updateWorkbenchContext } from "../workbench-context.js";
 import { createOperationMonitor } from "./operation-monitor.js";
 import { createApplicationsBoard } from "./applications-board.js?v=compact-ui&motion=stable";
@@ -25,6 +25,7 @@ export function createRouteActivationCoordinator({ activate, onStart, onShown = 
 }
 
 export function contentPanelPresentation(panel, hasResume = false) {
+  if (panel === "tailor") return Object.freeze({archive: false, headingHidden: true, mode: "定制简历", title: "岗位定制简历"});
   const archive = panel !== "match";
   return Object.freeze({
     archive,
@@ -125,6 +126,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   const routeSurfaces = Object.freeze({
     archive: elements.main,
     match: elements.match,
+    ...(elements.tailoringMain ? {tailor: elements.tailoringMain} : {}),
     "version-map": versionMapMain,
     applications: applicationsMain,
   });
@@ -166,7 +168,7 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     const workspaceId = activeWorkspaceId;
     versionMapWorkspace?.setInteractiveGuard?.(() => activeRoute === "version-map" && activeWorkspaceId === workspaceId);
     applicationsBoard?.setInteractiveGuard?.(() => activeRoute === "applications" && activeWorkspaceId === workspaceId);
-    jobMatching?.setLifecycleGuard?.(() => activeRoute === "workbench" && activeWorkspaceId === workspaceId && lastWorkbenchPanel === "match");
+    jobMatching?.setLifecycleGuard?.(() => activeRoute === "workbench" && activeWorkspaceId === workspaceId && ["match", "tailor"].includes(lastWorkbenchPanel));
   }
 
   function preferredWorkbenchPanel() {
@@ -180,7 +182,8 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     const presentation = contentPanelPresentation(panel, hasResume);
     showOnlySurface(panel);
     elements.archiveTab.setAttribute("aria-current", presentation.archive ? "page" : "false");
-    elements.matchTab.setAttribute("aria-current", presentation.archive ? "false" : "page");
+    elements.matchTab.setAttribute("aria-current", panel === "match" ? "page" : "false");
+    elements.tailorTab?.setAttribute("aria-current", panel === "tailor" ? "page" : "false");
     elements.mode.textContent = presentation.mode;
     elements.title.closest(".workbench-section-heading").hidden = presentation.headingHidden;
     elements.title.textContent = presentation.title;
@@ -202,7 +205,6 @@ export function createWorkbenchShell({ getApiBase, elements }) {
 
   function applyPrimaryRoutePresentation(route) {
     const workbench = route === "workbench";
-    if (elements.stageCallout) elements.stageCallout.hidden = !workbench;
     if (elements.contentTabs) elements.contentTabs.hidden = !workbench;
     if (workbench) {
       showOnlySurface(preferredWorkbenchPanel());
@@ -265,8 +267,9 @@ export function createWorkbenchShell({ getApiBase, elements }) {
   });
   const jobMatching = createJobMatching({
     request,
-    elements: { main: elements.match, jobs: elements.jobList, status: elements.status },
-    activatePanel: options => showContentPanel("match", options),
+    apiBase: getApiBase,
+    elements: { main: elements.match, tailoringMain: elements.tailoringMain, jobs: elements.jobList, status: elements.status },
+    activatePanel: ({ panel = "match", ...options } = {}) => showContentPanel(panel, options),
     reloadHome: () => load(true),
   });
   const operationMonitor = createOperationMonitor({ request, apiBase: getApiBase, container: elements.operationCards });
@@ -309,13 +312,10 @@ export function createWorkbenchShell({ getApiBase, elements }) {
         ["prepare_resume", "如何准备简历"],
       ],
       B: [
-        ["ai_edit_resume", "AI 修改简历"],
         ["rewrite_section", "哪块最应该改"],
         ["compare_versions", "比较简历版本"],
       ],
       C: [
-        ["ai_edit_resume", "AI 修改简历"],
-        ["tailor_resume", "AI 定制简历"],
         ["explain_score", "解释匹配分数"],
         ["rewrite_section", "短板怎么补"],
       ],
@@ -335,45 +335,12 @@ export function createWorkbenchShell({ getApiBase, elements }) {
     elements.stageResume.dataset.state = stage === "A" ? "current" : "done";
     elements.stageJob.dataset.state = stage === "A" ? "pending" : stage === "B" ? "current" : "done";
     elements.stageAnalysis.dataset.state = stage === "C" ? "current" : "pending";
-    elements.stageEyebrow.textContent = config.eyebrow;
-    elements.stageTitle.textContent = stats.active_operation_count > 0 && stage === "C"
-      ? "分析任务正在执行"
-      : config.title;
-    elements.stageDescription.textContent = stats.active_operation_count > 0 && stage === "C"
-      ? `当前有 ${stats.active_operation_count} 个任务在执行；可以在左侧查看实时进度。`
-      : config.description;
-    elements.stagePrimary.textContent = stats.active_operation_count > 0 && stage === "C"
-      ? "分析任务进行中"
-      : config.primary;
-    elements.stagePrimary.disabled = stats.active_operation_count > 0 && stage === "C";
-    elements.stageSecondary.hidden = !config.secondary;
-    elements.stageSecondary.textContent = config.secondary || "";
     elements.candidateRail.hidden = false;
     elements.matchTab.disabled = stage === "A";
     elements.matchTab.title = stage === "A" ? "先上传简历建档" : "";
     replaceAgentActions(stage);
-    elements.tailorResumeButton.hidden = stage !== "C";
-    elements.tailorResumeButton.onclick = () => {
-      elements.agentActions.querySelector('[data-agent-action="tailor_resume"]')?.click();
-    };
 
-    elements.stagePrimary.onclick = () => {
-      if (stage === "A") return resumeWorkspace.renderImport(activeWorkspaceId || null);
-      if (stage === "B") return jobMatching.renderJobForm(activeWorkspaceId);
-      showContentPanel("match");
-      jobMatching.renderMatchChooser(activeWorkspaceId);
-    };
-    elements.stageSecondary.onclick = () => {
-      showContentPanel("archive");
-      const version = currentHome?.recent_versions?.[0];
-      if (version) {
-        const workspaceId = activeWorkspaceId;
-        void resumeWorkspace.renderResumePreview(workspaceId, version.version_id, version.label, "", {
-          isCurrent: () => activeRoute === "workbench" && activeWorkspaceId === workspaceId && lastWorkbenchPanel === "archive",
-          preserveContent: prepareSurface(elements.main, workspaceId),
-        }).then(rendered => completeSurface(elements.main, workspaceId, rendered));
-      }
-    };
+
   }
 
   function setStepStates(stats, mode) {
@@ -558,6 +525,16 @@ export function createWorkbenchShell({ getApiBase, elements }) {
       }).then(rendered => completeSurface(elements.match, workspaceId, rendered));
     }
   });
+  elements.tailorTab?.addEventListener("click", () => {
+    showContentPanel("tailor");
+    if (!elements.tailoringMain.childElementCount && !elements.tailoringMain.textContent.trim()) {
+      const empty = document.createElement("div"); empty.className = "workbench-empty";
+      const copy = document.createElement("p"); copy.textContent = "在岗位匹配中点击 AI 定制简历，生成思路、建议和完整预览会显示在这里。";
+      const back = document.createElement("button"); back.type = "button"; back.textContent = "前往岗位匹配";
+      back.addEventListener("click", () => elements.matchTab.click()); empty.append(copy, back); elements.tailoringMain.append(empty);
+    }
+  });
+
   async function activate(route) {
     const token = ++activationEpoch;
     activeRoute = route;

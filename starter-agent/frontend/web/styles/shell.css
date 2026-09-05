@@ -1,14 +1,14 @@
 :root {
-  --app-bg: #e4ebf0;
-  --app-surface: #fffdf8;
-  --app-ink: #263c31;
-  --app-muted: #68716b;
-  --app-line: #cbd5d9;
+  --app-bg: #f6f8fb;
+  --app-surface: #ffffff;
+  --app-ink: #202b35;
+  --app-muted: #788493;
+  --app-line: #e0e8f0;
   --app-accent: #176b4d;
   --app-accent-soft: #dcefe3;
   --app-header-block-size: 54px;
-  --app-shell-gap: 16px;
-  --app-workspace-block-size: calc(100dvh - var(--app-header-block-size) - 32px);
+  --app-shell-gap: 20px;
+  --app-workspace-block-size: calc(100dvh - var(--app-header-block-size) - 48px);
 }
 
 body {
@@ -75,13 +75,13 @@ body.modal-open {
     height: var(--app-workspace-block-size);
     min-height: 0;
     align-items: stretch;
-    grid-template-columns: clamp(310px, 22vw, 330px) minmax(620px, 1fr) clamp(270px, 19vw, 300px);
+    grid-template-columns: clamp(300px, 22vw, 340px) minmax(0, 1fr) clamp(260px, 18vw, 280px);
     gap: var(--app-shell-gap);
   }
 
   .workbench-left {
     display: grid;
-    grid-template-rows: clamp(140px, 18vh, 160px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: var(--app-shell-gap);
     height: 100%;
     min-height: 0;

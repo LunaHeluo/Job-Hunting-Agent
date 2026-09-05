@@ -1,7 +1,7 @@
 import { createApiClient } from "./app/api-client.js";
 import { createHashRouter } from "./app/router.js";
 import { createStore } from "./app/store.js";
-import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview&resume=current";
+import { createWorkbenchShell, createRouteActivationCoordinator } from "./app/features/workbench-shell.js?v=compact-ui&shell=routes&guard=active&motion=stable&tailor=preview&resume=current&ui=tailoring-tab-v1";
 import { getWorkbenchContext } from "./app/workbench-context.js";
 import { createShellState, resolveShellRoute } from "./app/shell-state.js";
 import { createModalManager } from "./app/modal-manager.js";
@@ -299,6 +299,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         scrollRegion: document.querySelector(".workspace-scroll-region"),
         main: document.querySelector("#workbenchMainContent"),
         match: document.querySelector("#workbenchMatchContent"),
+        tailoringMain: document.querySelector("#workbenchTailorContent"),
         versionMapMain: document.querySelector("#workbenchVersionMapContent"),
         applicationsMain: document.querySelector("#workbenchApplicationsContent"),
         contextTitle: document.querySelector("#workbenchContextTitle"),
@@ -309,21 +310,15 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
         actionStatus: document.querySelector("#workbenchActionStatus"),
         archiveTab: document.querySelector("#workbenchArchiveTab"),
         matchTab: document.querySelector("#workbenchMatchTab"),
+        tailorTab: document.querySelector("#workbenchTailorTab"),
         view: document.querySelector("#workbenchView"),
         candidateRail: document.querySelector("#workbenchCandidateRail"),
         stageResume: document.querySelector("#workbenchStageResume"),
         stageJob: document.querySelector("#workbenchStageJob"),
         stageAnalysis: document.querySelector("#workbenchStageAnalysis"),
-        stageCallout: document.querySelector("#workbenchStageCallout"),
         contentTabs: document.querySelector("#workbenchContentTabs"),
-        stageEyebrow: document.querySelector("#workbenchStageEyebrow"),
-        stageTitle: document.querySelector("#workbenchStageTitle"),
-        stageDescription: document.querySelector("#workbenchStageDescription"),
-        stagePrimary: document.querySelector("#workbenchStagePrimary"),
-        stageSecondary: document.querySelector("#workbenchStageSecondary"),
         agentActions: document.querySelector("#workbenchAgentActions"),
         taskCenter: document.querySelector(".workbench-task-center"),
-        tailorResumeButton: document.querySelector("#workbenchTailorResumeButton"),
       },
     });
     let activeKnowledgeBaseId = null;
@@ -4546,6 +4541,7 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       card.replaceChildren();
       if (!context?.workspace_id && action !== "prepare_resume") { card.textContent = "请先建立简历档案。"; return; }
       const chatPrompts = {
+        explain_score: "请结合当前简历和目标岗位，解释匹配分数、已经匹配的证据和主要差距。如果尚未进行评估，请先说明需要补充什么信息。不要编造经历。",
         prepare_resume: "我还没有建立简历档案。请给我一份精简的准备清单，告诉我上传简历前应该整理哪些教育、实习、项目、技能和可量化成果。",
         ai_edit_resume: "请基于当前工作台中已载入的简历，先指出最值得修改的三处，再为每一处给出可核验的改写候选。保持事实边界，不要编造经历、技能或数据，也不要自动保存版本。",
         rewrite_section: "请基于当前工作台上下文，指出最值得改写的一段，并给出可核验的改写候选。不要编造经历，也不要自动保存版本。",
@@ -4569,35 +4565,14 @@ window.StarterAgentModules = Object.freeze({ createApiClient, createHashRouter, 
       if (chatPrompts[action]) {
         if (state.isSending) { card.textContent = "Agent 正在回复上一条消息，请稍后再试。"; return; }
         messageInput.value = chatPrompts[action];
-        state.skipKnowledgeForNextMessage = true;
         hideToolMenu();
-        composer.requestSubmit();
+        messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+        messageInput.focus();
         return;
       }
       const title = document.createElement("strong"); title.textContent = `Candidate Action · ${action}`;
       const detail = document.createElement("p");
       card.append(title, detail);
-      if (action === "explain_score") {
-        if (state.isSending) { detail.textContent = "Agent 正在回复上一条消息，请稍后再解释分数。"; return; }
-        if (!context.match_analysis_id) { detail.textContent = "请先完成一次匹配评估。"; return; }
-        try {
-          const response = await fetch(`${apiBase()}/v1/workbench/match-analyses/${encodeURIComponent(context.match_analysis_id)}`);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const analysis = await response.json();
-          const score = analysis.total_score ?? "—";
-          const requirementCount = analysis.requirements?.length || 0;
-          const dimensions = (analysis.dimensions || []).map(item => `${item.name} ${Number(item.score).toFixed(1)}分`).join("；");
-          const requirements = (analysis.requirements || []).map(item =>
-            `- ${item.verdict}｜${item.original_text.slice(0, 180)}｜${item.explanation.slice(0, 180)}`
-          ).join("\n");
-          card.replaceChildren();
-          messageInput.value = `请解释当前匹配分数（${score}/100，共 ${requirementCount} 个要求）。\n评分维度：${dimensions || "未提供"}\n要求分析：\n${requirements || "未提供"}\n\n请说明得分的关键原因、已匹配证据、主要缺口，以及最优先的改进建议。只基于以上经过验证的工作台分析回答，不要编造经历或自动修改简历。`;
-          state.skipKnowledgeForNextMessage = true;
-          hideToolMenu();
-          composer.requestSubmit();
-        } catch (error) { detail.textContent = `解释加载失败：${error.message}`; }
-        return;
-      }
       if (action === "rewrite_section") {
         detail.textContent = "将把候选请求填入左侧对话框；发送消息不构成修改确认。";
         const proceed = document.createElement("button"); proceed.type = "button"; proceed.textContent = "填入对话框";

@@ -145,13 +145,9 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
       updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: versionId });
       updateProfileMetrics(content.markdown, content.profile);
       const panel = document.createElement("section"); panel.className = "resume-document-preview";
-      const header = document.createElement("header");
-      const title = document.createElement("h2"); title.textContent = "档案预览";
-      const meta = document.createElement("p"); meta.textContent = sourceFilename ? `当前简历档案：${label} · 来源：${sourceFilename}` : `当前简历档案：${label} · 可在左侧直接向 Agent 提问`;
-      header.append(title, meta);
       const documentBody = document.createElement("article"); documentBody.className = "resume-document-body";
       renderResumeDocument(documentBody, content.markdown, content.profile, label);
-      panel.append(header, documentBody); elements.main.replaceChildren(panel);
+      panel.append(documentBody); elements.main.replaceChildren(panel);
       return true;
     } catch (error) {
       if (!isCurrent()) return false;
@@ -539,7 +535,10 @@ export function createResumeWorkspace({ request, apiBase, elements, reloadHome, 
       }
       return;
     }
-    if (profileName) profileName.textContent = home.recent_versions[0].label;
+    if (profileName) {
+      profileName.textContent = home.recent_versions[0].label;
+      profileName.title = home.recent_versions[0].label;
+    }
     if (profileCaption) profileCaption.textContent = `${home.recent_versions.length} 个档案版本`;
     void request(`/v1/workbench/resume-versions/${encodeURIComponent(home.recent_versions[0].version_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`)
       .then(content => { if (isCurrent()) updateProfileMetrics(content.markdown, content.profile); })

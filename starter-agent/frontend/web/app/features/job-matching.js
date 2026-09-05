@@ -4,6 +4,8 @@ import { renderTailoredPreview } from "./tailored-preview.js?v=compact-ui";
 const selected = { resumeVersionId: "", jobSnapshotId: "" };
 
 const TAILORING_REJECTION_LABELS = Object.freeze({
+  tailoring_output_invalid: "模型返回格式不符合要求",
+  tailoring_no_verified_evidence: "没有可用于此段改写的已验证证据",
   empty_model_output: "模型没有返回候选改写",
   unknown_block: "模型引用了不存在的简历区块",
   duplicate_block: "同一简历区块被重复改写",
@@ -27,7 +29,7 @@ export function analysisEvidenceCount(analysis) {
 }
 
 export function requiresEvidenceUpgrade(analysis) {
-  return analysis?.rule_version !== "match-rule.v2";
+  return analysis?.rule_version !== "match-rule.v2.3";
 }
 
 export function selectRestorableAnalysis(analyses) {
@@ -61,10 +63,14 @@ export function buildMatchEvaluationPayload(
   };
 }
 
-export function createJobMatching({ request, elements, reloadHome, activatePanel = () => {} }) {
+export function createJobMatching({ request, apiBase = () => "", elements, reloadHome, activatePanel = () => {} }) {
+  const tailoringDrafts = new Map();
+  const tailoringMain = elements.tailoringMain || elements.main;
+  let tailoringRequest = 0;
+  let matchDialog = null;
   let lifecycleGuard = () => true;
   const isLifecycleCurrent = () => lifecycleGuard();
-  const setLifecycleGuard = guard => { lifecycleGuard = typeof guard === "function" ? guard : () => true; };
+  const setLifecycleGuard = guard => { matchDialog?.close(); lifecycleGuard = typeof guard === "function" ? guard : () => true; };
   function button(label, action, className = "") {
     const value = document.createElement("button"); value.type = "button"; value.textContent = label; value.className = className; value.addEventListener("click", action); return value;
   }
@@ -109,62 +115,6 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       ? "选择岗位可在中间区域查看完整分数、证据和改进建议。"
       : "确认岗位后，将自动在这里汇总匹配亮点与待提升项。";
     summary.append(summaryTitle, summaryText); elements.jobs.append(summary);
-    const research = button("自动岗位调研", () => renderResearchForm(workspaceId));
-    research.classList.add("workbench-job-research");
-    research.disabled = home.features?.delegated_research !== true;
-    if (research.disabled) research.title = home.features?.unavailable_reasons?.delegated_research || "Release Gate 未通过";
-    elements.jobs.append(research);
-    if (research.disabled) {
-      const reason = document.createElement("small"); reason.className = "release-gate-closed"; reason.textContent = `自动调研关闭：${research.title}。手工 JD 与单 URL 仍可使用。`; elements.jobs.append(reason);
-    }
-  }
-
-  function renderResearchForm(workspaceId) {
-    if (activatePanel() === false) return false;
-    const panel = document.createElement("section"); panel.className = "research-panel";
-    const title = document.createElement("h2"); title.textContent = "自动岗位调研";
-    const query = document.createElement("textarea"); query.rows = 5; query.placeholder = "例如：上海 Python 后端，偏 AI 平台"; query.setAttribute("aria-label", "岗位调研条件");
-    const status = document.createElement("div"); status.className = "operation-status";
-    const start = button("创建调研任务", async () => {
-      if (query.value.trim().length < 3) { status.textContent = "请填写明确的岗位方向。"; return; }
-      start.disabled = true; status.textContent = "正在检查 Release Gate 并创建 Parent Run…";
-      try {
-        const run = await request("/v1/workbench/research-runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace_id: workspaceId, query: query.value.trim(), target_valid_jobs: 3, max_pages: 3 }) });
-        status.textContent = `调研已创建：${run.parent_run_id}。结果只进入候选栏。`;
-        pollResearchCandidates(workspaceId, run.parent_run_id, panel, 0);
-      } catch (error) { status.textContent = `调研未启动：${error.message}`; start.disabled = false; }
-    }, "primary-action");
-    panel.append(title, query, start, status); elements.main.replaceChildren(panel);
-  }
-
-  async function pollResearchCandidates(workspaceId, parentRunId, panel, attempt) {
-    try {
-      const page = await request(`/v1/workbench/research-runs/${encodeURIComponent(parentRunId)}/candidates`);
-      let list = panel.querySelector(".research-candidates");
-      if (!list) { list = document.createElement("div"); list.className = "research-candidates"; panel.append(list); }
-      list.replaceChildren();
-      for (const candidate of page.items || []) {
-        const card = document.createElement("article"); card.className = "research-candidate";
-        const title = document.createElement("strong"); title.textContent = `${candidate.company} · ${candidate.title}`;
-        const meta = document.createElement("p"); meta.textContent = `${candidate.location || "地点未知"} · ${candidate.evidence_level}`;
-        const source = document.createElement("a"); source.href = candidate.final_url; source.target = "_blank"; source.rel = "noopener noreferrer"; source.textContent = "查看来源";
-        const jd = document.createElement("details"); const jdTitle = document.createElement("summary"); jdTitle.textContent = "查看 JD"; const jdText = document.createElement("pre"); jdText.textContent = [...candidate.responsibilities, ...candidate.requirements].map(item => `- ${item}`).join("\n"); jd.append(jdTitle, jdText);
-        const retain = button("评估并留存", async () => {
-          const operationId = token("op_research_job"); retain.disabled = true;
-          try {
-            await request(`/v1/workbench/research-runs/${encodeURIComponent(parentRunId)}/retain`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": operationId }, body: JSON.stringify({ workspace_id: workspaceId, candidate_id: candidate.candidate_id, operation_id: operationId, idempotency_key: operationId }) });
-            meta.textContent = "已留存为 Job/JobSnapshot；候选本身未被当作投递记录。"; await reloadHome();
-          } catch (error) { meta.textContent = `留存失败：${error.message}`; retain.disabled = false; }
-        }, "primary-action");
-        retain.disabled = candidate.evidence_level !== "complete";
-        if (retain.disabled) retain.title = "证据不完整，不能留存";
-        card.append(title, meta, source, jd, retain); list.append(card);
-      }
-      if ((page.items || []).length || attempt >= 30) return;
-    } catch (error) {
-      if (attempt >= 30) { const failed = document.createElement("p"); failed.textContent = `候选加载失败：${error.message}`; panel.append(failed); return; }
-    }
-    window.setTimeout(() => pollResearchCandidates(workspaceId, parentRunId, panel, attempt + 1), Math.min(10000, 1000 + attempt * 500));
   }
 
   function renderJobAnalysisEditor({ workspaceId, panel, closeDialog, title, company, location, source, analysis, extractionMethod }) {
@@ -199,7 +149,9 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
         selected.jobSnapshotId = promotion.snapshot_id; closeDialog(); activatePanel(); await reloadHome();
       } catch (error) { status.textContent = `留存失败：${error.message}`; save.disabled = false; }
     }, "primary-action");
-    panel.append(heading, helper, role, employer, place, sections, sourceDetails, back, save, status);
+    const windowTitle = panel.closest("dialog")?.querySelector(".workbench-dialog-header h2");
+    if (windowTitle) windowTitle.textContent = heading.textContent;
+    panel.append(helper, role, employer, place, sections, sourceDetails, back, save, status);
   }
 
   function createTagEditor(labelText, initialValues) {
@@ -226,13 +178,27 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     return `# ${title}\n\n公司：${company}${location ? `\n地点：${location}` : ""}${section("岗位职责", responsibilities)}${section("必需要求", required)}${section("加分项", preferred)}\n`;
   }
 
+  function openWorkbenchDialog(titleText, bodyClass = "") {
+    matchDialog?.close();
+    const dialog = document.createElement("dialog"); dialog.className = "workbench-dialog";
+    dialog.setAttribute("aria-labelledby", "workbenchDialogTitle");
+    const header = document.createElement("header"); header.className = "workbench-dialog-header";
+    const title = document.createElement("h2"); title.id = "workbenchDialogTitle"; title.textContent = titleText;
+    const close = button("×", () => dialog.close(), "workbench-dialog-close"); close.setAttribute("aria-label", "关闭窗口");
+    header.append(title, close);
+    const panel = document.createElement("section"); panel.className = `workbench-dialog-body ${bodyClass}`;
+    dialog.append(header, panel); document.body.append(dialog); matchDialog = dialog;
+    dialog.addEventListener("close", () => { if (matchDialog === dialog) matchDialog = null; dialog.remove(); });
+    dialog.addEventListener("click", event => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
+    });
+    dialog.showModal();
+    return { dialog, panel, title, closeDialog: () => dialog.close() };
+  }
+
   function renderJobForm(workspaceId) {
-    const overlay = document.createElement("div"); overlay.className = "workbench-modal-overlay";
-    const closeDialog = () => overlay.remove();
-    const panel = document.createElement("section"); panel.className = "job-input-panel";
-    panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-label", "导入职位描述");
-    const title = document.createElement("h2"); title.textContent = "评估岗位来源";
-    const close = button("关闭", closeDialog, "secondary-action");
+    const { panel, closeDialog } = openWorkbenchDialog("评估岗位来源", "job-input-panel");
     const kind = document.createElement("select"); kind.setAttribute("aria-label", "JD 来源类型"); kind.innerHTML = '<option value="text">粘贴 JD</option><option value="file">上传 JD 文件/截图</option><option value="stable_url">稳定 URL</option>';
     const role = document.createElement("input"); role.placeholder = "岗位名称"; role.setAttribute("aria-label", "岗位名称");
     const company = document.createElement("input"); company.placeholder = "公司"; company.setAttribute("aria-label", "公司");
@@ -275,65 +241,73 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       } catch (error) { status.textContent = `留存失败：${error.message}`; }
       finally { submit.disabled = false; }
     }, "primary-action");
-    panel.append(title, close, kind, role, company, location, content, file, authorized, submit, status);
-    overlay.append(panel); overlay.addEventListener("click", event => { if (event.target === overlay) closeDialog(); }); document.body.append(overlay);
+    panel.append(kind, role, company, location, content, file, authorized, submit, status);
+
   }
 
   async function openJob(workspaceId, jobId) {
     if (!isLifecycleCurrent()) return false;
-    if (activatePanel() === false) return false;
-    elements.main.textContent = "正在加载岗位快照…";
+    const ownerGuard = lifecycleGuard;
+    const { dialog, panel, title } = openWorkbenchDialog("岗位详情", "job-preview-panel");
+    const current = () => dialog.open && lifecycleGuard === ownerGuard && ownerGuard();
+    panel.textContent = "正在加载岗位快照…";
     try {
       const [job, snapshots] = await Promise.all([request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}`), request(`/v1/workbench/jobs/${encodeURIComponent(jobId)}/snapshots`)]);
-      if (!isLifecycleCurrent()) return false;
+      if (!current()) return false;
       const snapshot = (snapshots.items || []).at(-1);
       if (!snapshot) throw new Error("岗位没有可用快照");
-      selected.jobSnapshotId = snapshot.snapshot_id;
-      updateWorkbenchContext({ workspace_id: workspaceId, job_snapshot_id: snapshot.snapshot_id });
       const source = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(snapshot.snapshot_id)}/content?workspace_id=${encodeURIComponent(workspaceId)}`);
-      if (!isLifecycleCurrent()) return false;
-      const panel = document.createElement("section"); panel.className = "job-preview-panel";
-      const title = document.createElement("h2"); title.textContent = `${job.company} · ${job.title}`;
-      const meta = document.createElement("p"); meta.textContent = `快照 ${snapshot.snapshot_id} · ${snapshot.source_status}${snapshot.verified ? " · 已验证来源" : " · 手工来源"}`;
+      if (!current()) return false;
+      title.textContent = `${job.company} · ${job.title}`;
+      const meta = document.createElement("p"); meta.textContent = snapshot.verified ? "已验证来源" : "手工来源";
       const pre = document.createElement("pre"); pre.textContent = source.markdown;
-      panel.append(title, meta, pre, button("使用此快照进行匹配", () => renderMatchChooser(workspaceId), "primary-action")); elements.main.replaceChildren(panel);
-    } catch (error) { if (isLifecycleCurrent()) elements.main.textContent = `岗位加载失败：${error.message}`; return false; }
+      const use = button("使用此快照进行匹配", () => {
+        selected.jobSnapshotId = snapshot.snapshot_id;
+        dialog.close(); renderMatchChooser(workspaceId);
+      }, "primary-action");
+      panel.replaceChildren(meta, pre, use);
+    } catch (error) { if (current()) panel.textContent = `岗位加载失败：${error.message}`; return false; }
   }
 
   async function renderMatchChooser(workspaceId, { tailor = false } = {}) {
     if (!isLifecycleCurrent()) return false;
-    if (activatePanel() === false) return false;
-    elements.main.className = "";
-    elements.main.textContent = "正在加载可评估对象…";
+    const ownerGuard = lifecycleGuard;
+    const { dialog, panel } = openWorkbenchDialog("匹配评估", "match-chooser");
+    const status = document.createElement("div"); status.className = "operation-status";
+    status.setAttribute("role", "status"); status.textContent = "正在加载可评估对象…";
+    panel.append(status);
+    const current = () => dialog.open && lifecycleGuard === ownerGuard && ownerGuard();
     try {
       const [home, jobs] = await Promise.all([request(`/v1/workbench/workspaces/${encodeURIComponent(workspaceId)}/home`), request(`/v1/workbench/jobs?workspace_id=${encodeURIComponent(workspaceId)}`)]);
-      if (!isLifecycleCurrent()) return false;
-      const panel = document.createElement("section"); panel.className = "match-chooser";
-      const title = document.createElement("h2"); title.textContent = "匹配评估";
+      if (!current()) return false;
       const resume = document.createElement("select"); resume.setAttribute("aria-label", "已确认简历版本");
       for (const item of (home.recent_versions || []).filter(value => value.status === "confirmed")) { const option = document.createElement("option"); option.value = item.version_id; option.textContent = item.label; resume.append(option); }
       const snapshot = document.createElement("select"); snapshot.setAttribute("aria-label", "岗位快照");
       for (const job of jobs.items || []) {
         const page = await request(`/v1/workbench/jobs/${encodeURIComponent(job.job_id)}/snapshots`);
-        if (!isLifecycleCurrent()) return false;
+        if (!current()) return false;
         for (const item of page.items || []) { const option = document.createElement("option"); option.value = item.snapshot_id; option.textContent = `${job.company} · ${job.title} · ${new Date(item.captured_at).toLocaleDateString()}`; snapshot.append(option); }
       }
-      if (selected.jobSnapshotId) snapshot.value = selected.jobSnapshotId;
-      const status = document.createElement("div"); status.className = "operation-status";
+      if ([...snapshot.options].some(item => item.value === selected.jobSnapshotId)) snapshot.value = selected.jobSnapshotId;
+      if ([...resume.options].some(item => item.value === selected.resumeVersionId)) resume.value = selected.resumeVersionId;
+      status.textContent = "";
       const evaluate = button("开始证据匹配", async () => {
         if (!resume.value || !snapshot.value) { status.textContent = "需要已确认简历版本和岗位快照。"; return; }
-        evaluate.disabled = true; status.textContent = "正在提取要求并验证简历证据…";
+        evaluate.disabled = true; resume.disabled = true; snapshot.disabled = true;
+        status.textContent = "正在提取要求并验证简历证据…";
         try {
           const analysis = await evaluateMatch(workspaceId, resume.value, snapshot.value);
-          if (!isLifecycleCurrent()) return;
+          if (!current()) return;
           selected.resumeVersionId = resume.value; selected.jobSnapshotId = snapshot.value;
           updateWorkbenchContext({ workspace_id: workspaceId, resume_version_id: resume.value, job_snapshot_id: snapshot.value, match_analysis_id: analysis.analysis_id });
+          dialog.close();
           if (tailor) await prepareTailoredResume(workspaceId, analysis.analysis_id);
-          else renderAnalysis(workspaceId, analysis);
-        } catch (error) { status.textContent = `评估失败：${error.message}`; evaluate.disabled = false; }
+          else await renderAnalysis(workspaceId, analysis);
+        } catch (error) { if (current()) { status.textContent = `评估失败：${error.message}`; evaluate.disabled = false; resume.disabled = false; snapshot.disabled = false; } }
       }, "primary-action");
-      panel.append(title, label("简历版本", resume), label("岗位快照", snapshot), evaluate, status); elements.main.replaceChildren(panel);
-    } catch (error) { if (isLifecycleCurrent()) elements.main.textContent = `评估对象加载失败：${error.message}`; return false; }
+      panel.replaceChildren(label("简历版本", resume), label("岗位快照", snapshot), evaluate, status);
+      resume.focus();
+    } catch (error) { if (current()) status.textContent = `评估对象加载失败：${error.message}`; return false; }
   }
 
   function label(text, control) { const value = document.createElement("label"); value.append(text, control); return value; }
@@ -355,6 +329,9 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     if (!isCurrent()) return false;
     const panel = document.createElement("section"); panel.className = "match-analysis-panel";
     const total = Number(analysis.total_score || 0);
+    const noEvidence = analysis.total_score === 0 && analysisEvidenceCount(analysis) === 0
+      && (analysis.requirements || []).length > 0
+      && analysis.requirements.every(item => item.verdict === "missing");
     const matched = (analysis.requirements || []).filter(item => item.verdict === "matched" || item.verdict === "partial");
     const gaps = (analysis.requirements || []).filter(item => item.verdict === "missing" || item.verdict === "conflict");
     const grade = total >= 75 ? "A" : total >= 55 ? "B" : "C";
@@ -366,8 +343,11 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     const denominator = document.createElement("span"); denominator.textContent = "/100"; scoreBlock.append(score, denominator);
     const jobBlock = document.createElement("div"); jobBlock.className = "match-job-summary";
     const jobTitle = document.createElement("h2"); jobTitle.textContent = job ? `${job.company} · ${job.title}` : "当前岗位匹配分析";
-    const description = document.createElement("p"); description.textContent = recommendationCopy; jobBlock.append(jobTitle, description);
+    const description = document.createElement("p"); description.textContent = noEvidence
+      ? "当前规则未找到匹配证据，0 分不代表简历质量为零。请先核对解析原文与岗位要求；字面关键词匹配可能漏掉中文改写或同义表达。"
+      : recommendationCopy; jobBlock.append(jobTitle, description);
     const gradeBadge = document.createElement("span"); gradeBadge.className = `match-grade match-grade-${grade.toLowerCase()}`; gradeBadge.textContent = `${grade} · ${recommendation}`;
+    if (noEvidence) { gradeBadge.textContent = "匹配证据待核对"; gradeBadge.className = "match-grade"; }
     heading.append(scoreBlock, jobBlock, gradeBadge);
     const analysisMeta = document.createElement("div"); analysisMeta.className = "match-analysis-meta";
     const state = document.createElement("span"); state.textContent = `分析状态：${analysis.status}`;
@@ -383,7 +363,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     for (const item of matched) highlightList.append(renderInsightCard(item, "positive"));
     highlights.append(highlightList);
     const gapsSection = document.createElement("section"); gapsSection.className = "match-insights";
-    const gapTitle = document.createElement("h3"); gapTitle.textContent = "短板"; gapsSection.append(gapTitle);
+    const gapTitle = document.createElement("h3"); gapTitle.textContent = noEvidence ? "尚未找到证据的要求" : "短板"; gapsSection.append(gapTitle);
     const gapList = document.createElement("div"); gapList.className = "match-insight-list match-insight-gap";
     if (!gaps.length) { const empty = document.createElement("p"); empty.textContent = "当前分析未发现明确短板。"; gapList.append(empty); }
     for (const item of gaps) gapList.append(renderInsightCard(item, "gap"));
@@ -391,6 +371,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     const strategy = document.createElement("aside"); strategy.className = "match-strategy";
     const strategyTitle = document.createElement("strong"); strategyTitle.textContent = "下一步建议：";
     strategy.append(strategyTitle, ` ${gaps.length ? "优先围绕短板生成基于证据的修改建议；系统不会自动补写不存在的经历。" : "可生成基于当前已验证证据的定制建议。"}`);
+    if (noEvidence) strategy.textContent = "下一步：核对下方简历原文。若内容缺失，重新上传；若原文完整，请对照岗位逐条核实证据。补充真实素材后重新评估。";
     const requirements = document.createElement("details"); requirements.className = "match-requirement-details";
     const requirementSummary = document.createElement("summary"); requirementSummary.textContent = `查看全部 ${analysis.requirements?.length || 0} 条匹配依据`;
     const requirementList = document.createElement("div"); requirementList.className = "requirement-list";
@@ -400,12 +381,12 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       const explanation = document.createElement("p"); explanation.textContent = item.explanation;
       detail.append(summary, explanation);
       for (const ref of item.evidence || []) { const quote = document.createElement("blockquote"); quote.textContent = ref.quote || "证据已验证；正文按需显示。"; detail.append(quote); }
-      if (item.verdict === "missing" || item.verdict === "conflict") { const warning = document.createElement("p"); warning.className = "gap-warning"; warning.textContent = "能力缺口：不会自动写入简历。"; detail.append(warning); }
+      if (item.verdict === "missing" || item.verdict === "conflict") { const warning = document.createElement("p"); warning.className = "gap-warning"; warning.textContent = "当前证据不足或冲突：不会自动补写经历，请核对原文。"; detail.append(warning); }
       requirementList.append(detail);
     }
     requirements.append(requirementSummary, requirementList);
     const actions = document.createElement("div"); actions.className = "draft-actions";
-    actions.append(button("重新选择", () => renderMatchChooser(workspaceId)), button("生成证据建议", () => prepareSuggestions(workspaceId, analysis), "primary-action"));
+    actions.append(button("重新选择", () => renderMatchChooser(workspaceId)), button("AI 定制简历", () => prepareTailoredResume(workspaceId, analysis.analysis_id).catch(() => {}), "primary-action"));
     panel.append(heading, analysisMeta, dimensions, highlights, gapsSection, strategy, requirements, actions); elements.main.replaceChildren(panel);
     return true;
   }
@@ -419,87 +400,107 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     card.append(title, body); return card;
   }
 
-  async function prepareSuggestions(workspaceId, analysis) {
+  async function prepareTailoredResume(workspaceId, analysisId, { regenerate = false, blockIds = [], expectedDraftRevision } = {}) {
     if (!isLifecycleCurrent()) return false;
-    if (activatePanel({ resetScroll: true }) === false) return false;
-    elements.main.className = "";
-    elements.main.textContent = "正在创建可恢复 Draft 并生成候选…";
-    try {
-      const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
-      if (!isLifecycleCurrent()) return false;
-      const draftId = token("rd_match");
-      const draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft_id: draftId, workspace_id: workspaceId, branch_id: version.branch_id }),
-      });
-      if (!isLifecycleCurrent()) return false;
-      await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysis.analysis_id)}/suggestion-candidates`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: workspaceId, draft_id: draft.draft_id }),
-      });
-      if (!isLifecycleCurrent()) return false;
-      return await renderSuggestions(workspaceId, analysis);
-    } catch (error) {
-      if (!isLifecycleCurrent()) return false;
-      elements.main.textContent = `建议准备失败：${error.message}`;
-      return false;
-    }
-  }
-
-  async function prepareTailoredResume(workspaceId, analysisId) {
-    if (!isLifecycleCurrent()) return false;
-    if (activatePanel({ resetScroll: true }) === false) return false;
-    elements.main.className = "";
-    elements.main.textContent = "正在读取匹配分析并准备 AI 定制简历…";
+    const ownerGuard = lifecycleGuard;
+    const requestNumber = ++tailoringRequest;
+    const current = () => ownerGuard() && ownerGuard === lifecycleGuard && requestNumber === tailoringRequest;
+    if (activatePanel({ panel: "tailor", resetScroll: true }) === false) return false;
+    tailoringMain.className = "";
+    tailoringMain.textContent = "正在读取匹配分析并准备 AI 定制简历…";
     try {
       const analysis = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}`);
-      if (!isLifecycleCurrent()) return false;
+      if (!current()) return false;
       if (requiresEvidenceUpgrade(analysis)) {
         renderEvidenceUpgrade(workspaceId, analysis);
         return;
       }
       const page = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}/suggestions`);
-      if (!isLifecycleCurrent()) return false;
+      if (!current()) return false;
       const existing = (page.items || []).filter(suggestion => suggestion.change_type === "ai_tailor_v1");
-      if (existing.length) {
-        const latest = [...existing].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
-        const reusable = existing.filter(suggestion =>
-          suggestion.target_draft_id === latest.target_draft_id
-          && suggestion.target_draft_revision === latest.target_draft_revision
-        );
-        renderTailoredSuggestions(workspaceId, analysis, reusable, { reused: true, attempts: 1, rejected_reasons: [] });
+      const key = `tailoring-draft:${workspaceId}:${analysisId}`;
+      let remembered = tailoringDrafts.get(key);
+      try { remembered ||= JSON.parse(sessionStorage.getItem(key) || "null"); } catch {}
+      const draftIds = [...new Set([remembered?.draft_id, ...[...existing].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map(item => item.target_draft_id)].filter(Boolean))];
+      let draft;
+      for (const draftId of draftIds) {
+        const candidate = await request(`/v1/workbench/drafts/${encodeURIComponent(draftId)}`);
+        if (!current()) return false;
+        if (candidate.status === "active" && candidate.base_version_id === analysis.resume_version_id) {
+          draft = candidate; break;
+        }
+      }
+      const remember = value => {
+        tailoringDrafts.set(key, value);
+        try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {}
+      };
+      if (expectedDraftRevision !== undefined && (!draft || draft.revision !== expectedDraftRevision)) {
+        throw new Error("Draft 已更新，请重新打开当前建议后再生成。");
+      }
+      if (!draft) {
+        const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
+        if (!current()) return false;
+        const job = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(analysis.job_snapshot_id)}`);
+        if (!current()) return false;
+        const branch = remembered?.branch_id && !remembered.draft_id ? remembered : await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/branches`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ branch_id: token("rb_tailored"), resume_id: version.resume_id,
+            name: `${job.company || "目标公司"} · ${job.title || "目标岗位"}`.slice(0, 160), branch_type: "company", job_snapshot_id: analysis.job_snapshot_id }),
+        });
+        remember({branch_id: branch.branch_id});
+        if (!current()) return false;
+        draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft_id: token("rd_tailored"), workspace_id: workspaceId, branch_id: branch.branch_id }),
+        });
+      }
+      remember({draft_id: draft.draft_id, branch_id: draft.branch_id});
+      if (!current()) return false;
+      const reusable = existing.filter(suggestion => suggestion.status === "pending"
+        && suggestion.target_draft_id === draft.draft_id && suggestion.target_draft_revision === draft.revision);
+      const history = await request(`/v1/workbench/drafts/${encodeURIComponent(draft.draft_id)}/tailoring-generations?analysis_id=${encodeURIComponent(analysisId)}`);
+      if (!current()) return false;
+      const latest = history.items?.[0];
+      const previousFailures = {};
+      for (const result of [...(history.items || [])].reverse()) {
+        Object.assign(previousFailures, result.block_failures || {});
+        for (const item of result.items || []) delete previousFailures[item.block_id];
+        for (const id of result.unchanged_block_ids || []) delete previousFailures[id];
+        if (result.outcome === "no_change") for (const id of result.block_ids || []) delete previousFailures[id];
+      }
+      if (!regenerate && (reusable.length || (latest && !(latest.items || []).length))) {
+        renderTailoredSuggestions(workspaceId, analysis, reusable, {
+          ...latest, reused: true, outcome: reusable.length ? "ready" : latest.outcome,
+          draft_id: draft.draft_id, draft_revision: draft.revision, block_failures: previousFailures,
+        });
         return;
       }
-
-      const version = await request(`/v1/workbench/resume-versions/${encodeURIComponent(analysis.resume_version_id)}`);
-      if (!isLifecycleCurrent()) return false;
-      const job = await request(`/v1/workbench/job-snapshots/${encodeURIComponent(analysis.job_snapshot_id)}`);
-      if (!isLifecycleCurrent()) return false;
-      const branch = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/branches`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ branch_id: token("rb_tailored"), resume_id: version.resume_id,
-          name: `${job.company || "目标公司"} · ${job.title || "目标岗位"}`.slice(0, 160), branch_type: "company", job_snapshot_id: analysis.job_snapshot_id }),
-      });
-      if (!isLifecycleCurrent()) return false;
-      const draft = await request(`/v1/workbench/resume-versions/${encodeURIComponent(version.version_id)}/drafts`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft_id: token("rd_tailored"), workspace_id: workspaceId, branch_id: branch.branch_id }),
-      });
-      if (!isLifecycleCurrent()) return false;
       const generated = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysisId)}/tailored-resume-candidates`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: workspaceId, draft_id: draft.draft_id }),
+        body: JSON.stringify({ workspace_id: workspaceId, draft_id: draft.draft_id, ...(regenerate ? { generation_id: token("tg") } : {}), ...(blockIds.length ? {block_ids: blockIds} : {}) }),
       });
-      if (!isLifecycleCurrent()) return false;
-      renderTailoredSuggestions(workspaceId, analysis, generated.items || [], {
+      if (!current()) return false;
+      const replacedBlockIds = new Set((generated.items || []).map(item => item.block_id));
+      const failures = {...previousFailures, ...(generated.block_failures || {})};
+      for (const id of replacedBlockIds) delete failures[id];
+      for (const id of generated.unchanged_block_ids || []) delete failures[id];
+      if (generated.outcome === "no_change") for (const id of blockIds) delete failures[id];
+      const candidates = blockIds.length
+        ? [...reusable.filter(item => !replacedBlockIds.has(item.block_id)), ...(generated.items || [])]
+        : generated.items || [];
+      renderTailoredSuggestions(workspaceId, analysis, candidates, {
+        ...generated,
+        block_failures: failures,
+        empty_scope_result: blockIds.length > 0 && !(generated.items || []).length,
+        draft_id: generated.draft_id || draft.draft_id,
         reused: generated.reused === true,
-        attempts: generated.attempts || 1,
+        attempts: generated.attempts ?? 1,
         rejected_reasons: generated.rejected_reasons || [],
         reflection: generated.reflection,
       });
     } catch (error) {
-      if (!isLifecycleCurrent()) return false;
-      elements.main.textContent = `AI 定制简历准备失败：${error.message}`;
+      if (!current()) return false;
+      tailoringMain.textContent = `AI 定制简历准备失败：${error.message}`;
       throw error;
     }
   }
@@ -530,41 +531,68 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     }, "primary-action");
     const actions = document.createElement("div"); actions.className = "draft-actions";
     actions.append(button("返回分析", () => renderAnalysis(workspaceId, analysis)), upgrade);
-    panel.append(title, copy, actions, status); elements.main.replaceChildren(panel);
+    panel.append(title, copy, actions, status); tailoringMain.replaceChildren(panel);
   }
 
   function renderTailoredSuggestions(workspaceId, analysis, suggestions, diagnostics = {}) {
-    if (activatePanel({ resetScroll: true }) === false) return false;
+    if (!elements.tailoringMain && activatePanel({ panel: "tailor", resetScroll: true }) === false) return false;
     const ownerGuard = lifecycleGuard;
-    elements.main.className = "";
+    const ownsPanel = () => ownerGuard() && lifecycleGuard === ownerGuard;
+    tailoringMain.className = "";
     const panel = document.createElement("section"); panel.className = "suggestion-panel tailored-suggestion-panel";
     const header = document.createElement("header"); header.className = "tailored-suggestion-header";
     const heading = document.createElement("div");
     const title = document.createElement("h2"); title.textContent = "AI 定制简历建议";
     const helper = document.createElement("p"); helper.textContent = diagnostics.reused
       ? "已复用这次匹配已有的定制结果；模型没有重复运行。"
+      : !suggestions.length ? `生成已结束，共执行 ${diagnostics.attempts || 0} 轮。请查看下方结果说明。`
       : diagnostics.attempts === 2
         ? "已自动修复生成 2 次；所有保留改写均通过证据校验。"
         : "所有改写均绑定已验证证据。可编辑并选择后，一次写入 Draft。";
     heading.append(title, helper);
     const safety = document.createElement("span"); safety.className = "tailored-safety-badge"; safety.textContent = "正式版本未改变";
     header.append(heading, safety); panel.append(header);
+    if (diagnostics.block_ids?.length) {
+      const scope = document.createElement("p"); scope.textContent = "本次仅重新生成选定段落；其他候选保留，Draft 尚未改变。"; panel.append(scope);
+    }
+
+    if (diagnostics.reflection?.notes) {
+      const plan = document.createElement("details");
+      const title = document.createElement("summary"); title.textContent = "全文定制思路";
+      const notes = document.createElement("p"); notes.textContent = diagnostics.reflection.notes;
+      plan.append(title, notes); panel.append(plan);
+    }
+    const failedBlocks = Object.keys(diagnostics.block_failures || {});
+    if (failedBlocks.length) {
+      const partial = document.createElement("p");
+      partial.textContent = `${failedBlocks.length} 个段落未生成有效候选，原文和其他段落的候选已保留。`;
+      panel.append(partial, button("重试未完成段落", () => prepareTailoredResume(workspaceId, analysis.analysis_id, {
+        regenerate: true, blockIds: failedBlocks, expectedDraftRevision: diagnostics.draft_revision,
+      })));
+    }
 
     const requirementById = new Map((analysis.requirements || []).map(item => [item.requirement_id, item]));
     const cards = [];
     const values = suggestions || [];
-    if (!values.length) {
+    if (!values.length || diagnostics.empty_scope_result) {
       const empty = document.createElement("div"); empty.className = "workbench-empty";
-      const emptyTitle = document.createElement("strong"); emptyTitle.textContent = "没有生成可安全使用的 AI 建议";
-      const emptyCopy = document.createElement("p"); emptyCopy.textContent = "系统已保留正式版本，并拦截不符合证据约束的候选。";
+      const messages = {
+        no_change: ["本次无需修改", "候选与原文一致。可查看完整原文，无需保存重复版本。"],
+        insufficient_evidence: ["可用证据不足", "请返回分析检查未匹配要求，补充真实项目或职责资料后重新分析。"],
+        generation_failed: ["模型返回格式或生成过程失败", "本次未取得有效候选。可以重新生成；这不表示你的经历不符合岗位。"],
+        validation_failed: ["候选未通过证据校验", "请根据以下原因核对引用或补充事实资料，再重新生成。"],
+      };
+      const [emptyHeading, emptyDescription] = messages[diagnostics.outcome] || ["本次没有可用候选", "暂未获得明确的生成诊断，可查看原文或重新生成。"];
+      const emptyTitle = document.createElement("strong"); emptyTitle.textContent = emptyHeading;
+      const emptyCopy = document.createElement("p"); emptyCopy.textContent = emptyDescription;
       const reasons = document.createElement("ul"); reasons.className = "tailored-diagnostics";
       for (const reason of diagnostics.rejected_reasons || []) {
         const item = document.createElement("li"); item.textContent = TAILORING_REJECTION_LABELS[reason] || `安全校验未通过：${reason}`; reasons.append(item);
       }
-      if (!reasons.children.length && diagnostics.reflection?.notes) {
-        const item = document.createElement("li"); item.textContent = diagnostics.reflection.notes; reasons.append(item);
+      for (const attempt of diagnostics.diagnostics || []) {
+        const item = document.createElement("li"); item.textContent = `第 ${attempt.attempt} 轮：${attempt.candidate_count} 条候选，${attempt.accepted_count} 条通过`; reasons.append(item);
       }
-      const retry = button("重新生成 AI 建议", () => prepareTailoredResume(workspaceId, analysis.analysis_id), "primary-action");
+      const retry = button("重新生成 AI 建议", () => prepareTailoredResume(workspaceId, analysis.analysis_id, { regenerate: true, blockIds: diagnostics.empty_scope_result ? diagnostics.block_ids || [] : [] }), "primary-action");
       empty.append(emptyTitle, emptyCopy, reasons, retry);
       panel.append(empty);
     }
@@ -600,21 +628,33 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
       const risk = document.createElement("p"); risk.className = "tailored-risk"; risk.textContent = `风险提示：${suggestion.risk || "采纳前请确认措辞仍符合原始职责边界。"}`;
       const status = document.createElement("div"); status.className = "operation-status"; status.setAttribute("aria-live", "polite");
       const reject = button("拒绝", async () => {
+        if (!ownsPanel()) return;
         reject.disabled = true;
         try {
           await request(`/v1/workbench/suggestions/${encodeURIComponent(suggestion.suggestion_id)}/decisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "reject" }) });
+          if (!ownsPanel()) return;
           suggestion.status = "rejected";
+          regenerateSection.disabled = true;
           checkbox.checked = false; checkbox.disabled = true; editor.disabled = true; state.textContent = "已拒绝"; status.textContent = "建议已拒绝；Draft 和正式版本均未改变。";
         } catch (error) { status.textContent = `拒绝失败：${error.message}`; reject.disabled = false; }
       });
       reject.disabled = !pending;
-      const controls = document.createElement("div"); controls.className = "draft-actions"; controls.append(reject);
+      const regenerateSection = button("重新生成此段", async () => {
+        if (!ownsPanel() || regenerateSection.disabled || suggestion.status !== "pending") return;
+        regenerateSection.disabled = true;
+        try {
+          await prepareTailoredResume(workspaceId, analysis.analysis_id, {regenerate: true, blockIds: [suggestion.block_id], expectedDraftRevision: suggestion.target_draft_revision});
+        } catch (error) { if (ownsPanel()) { status.textContent = `此段生成失败：${error.message}`; regenerateSection.disabled = false; } }
+      });
+      regenerateSection.disabled = !pending || !suggestion.block_id;
+      const controls = document.createElement("div"); controls.className = "draft-actions"; controls.append(reject, regenerateSection);
       card.append(cardHeader, trace, before, editorLabel, risk, controls, status); panel.append(card);
-      cards.push({ suggestion, card, checkbox, editor, state, status, reject });
+      cards.push({ suggestion, card, checkbox, editor, state, status, reject, regenerateSection });
     }
 
     const batchStatus = document.createElement("div"); batchStatus.className = "operation-status"; batchStatus.setAttribute("aria-live", "polite");
     const acceptSelected = button("批量接受到 Draft", async () => {
+      if (!ownsPanel()) return;
       const selectedCards = cards.filter(item => item.checkbox.checked && item.suggestion.status === "pending");
       if (!selectedCards.length) { batchStatus.textContent = "请至少选择一条待确认建议。"; return; }
       acceptSelected.disabled = true; batchStatus.textContent = "正在一次性写入 Draft…";
@@ -625,6 +665,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspace_id: workspaceId, accept_ids: acceptIds, reject_ids: [], edited_text_by_id: edited }),
         });
+        if (!ownsPanel()) return;
         for (const item of selectedCards) {
           item.suggestion.status = "accepted";
           item.checkbox.disabled = true; item.editor.disabled = true; item.reject.disabled = true; item.state.textContent = "已采纳";
@@ -632,7 +673,7 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
         }
         batchStatus.textContent = `已批量应用 ${selectedCards.length} 条建议到 Draft；正式版本未改变。`;
         // A batch advances the Draft revision; remaining suggestions must be refreshed before reuse.
-        for (const item of cards) { item.checkbox.disabled = true; item.editor.disabled = true; item.reject.disabled = true; }
+        for (const item of cards) { item.checkbox.disabled = true; item.editor.disabled = true; item.reject.disabled = true; item.regenerateSection.disabled = true; }
       } catch (error) { batchStatus.textContent = `批量采纳失败：${error.message}`; acceptSelected.disabled = false; }
     }, "primary-action");
     acceptSelected.disabled = !cards.some(item => item.suggestion.status === "pending");
@@ -640,45 +681,16 @@ export function createJobMatching({ request, elements, reloadHome, activatePanel
     const preview = button("查看完整 Draft / 保存版本", async () => {
       preview.disabled = true;
       try {
-        await renderTailoredPreview({ request, container: elements.main, workspaceId, analysis,
-          draftId: values[0].target_draft_id, isCurrent: () => ownerGuard() && lifecycleGuard === ownerGuard,
+        await renderTailoredPreview({ request, apiBase, container: tailoringMain, workspaceId, analysis,
+          suggestions: cards.filter(item => item.checkbox.checked).map(item => ({...item.suggestion, proposed_text: item.editor.value})),
+          draftId: diagnostics.draft_id || values[0]?.target_draft_id, isCurrent: () => ownerGuard() && lifecycleGuard === ownerGuard,
           onBack: () => prepareTailoredResume(workspaceId, analysis.analysis_id) });
       } catch (error) { batchStatus.textContent = `预览加载失败：${error.message}`; }
       finally { preview.disabled = false; }
     });
-    preview.disabled = !values.length;
+    preview.disabled = !(diagnostics.draft_id || values[0]?.target_draft_id);
     batchBar.append(button("返回分析", () => renderAnalysis(workspaceId, analysis)), batchStatus, acceptSelected, preview);
-    panel.append(batchBar); elements.main.replaceChildren(panel);
-  }
-
-  async function renderSuggestions(workspaceId, analysis) {
-    if (!isLifecycleCurrent()) return false;
-    if (activatePanel({ resetScroll: true }) === false) return false;
-    elements.main.className = "";
-    elements.main.textContent = "正在加载建议…";
-    try {
-      const page = await request(`/v1/workbench/match-analyses/${encodeURIComponent(analysis.analysis_id)}/suggestions`);
-      if (!isLifecycleCurrent()) return false;
-      const panel = document.createElement("section"); panel.className = "suggestion-panel";
-      const title = document.createElement("h2"); title.textContent = "建议审批"; panel.append(title);
-      if (!(page.items || []).length) { const empty = document.createElement("div"); empty.className = "workbench-empty"; empty.textContent = "尚无经证据验证的修改建议。缺口不会被自动改写为经历。"; panel.append(empty); }
-      for (const suggestion of page.items || []) {
-        const row = document.createElement("article"); row.className = "suggestion-row";
-        const reason = document.createElement("strong"); reason.textContent = suggestion.reason;
-        const before = document.createElement("pre"); before.textContent = `原文\n${suggestion.original_text}`;
-        const after = document.createElement("textarea"); after.value = suggestion.proposed_text; after.setAttribute("aria-label", "可编辑建议文本");
-        const status = document.createElement("div"); status.className = "operation-status";
-        const decide = async decision => { try { await request(`/v1/workbench/suggestions/${encodeURIComponent(suggestion.suggestion_id)}/decisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, workspace_id: decision === "accept" ? workspaceId : null, edited_text: decision === "accept" ? after.value : null }) }); status.textContent = decision === "accept" ? "建议已应用到 Draft；正式版本未改变。" : "建议已拒绝。"; } catch (error) { status.textContent = `审批失败：${error.message}`; } };
-        const controls = document.createElement("div"); controls.className = "draft-actions"; controls.append(button("拒绝", () => decide("reject")), button("接受到 Draft", () => decide("accept"), "primary-action"));
-        row.append(reason, before, after, controls, status); panel.append(row);
-      }
-      panel.append(button("返回分析", () => renderAnalysis(workspaceId, analysis))); elements.main.replaceChildren(panel);
-      return true;
-    } catch (error) {
-      if (!isLifecycleCurrent()) return false;
-      elements.main.textContent = `建议加载失败：${error.message}`;
-      return false;
-    }
+    panel.append(batchBar); tailoringMain.replaceChildren(panel);
   }
 
   async function renderMain(home, workspaceId, options = {}) {

@@ -1,5 +1,5 @@
-@import url("./tokens.css");
-@import url("./base.css");
-@import url("./shell.css");
-@import url("./legacy.css");
-@import url("./workbench.css?v=compact-ui&layout=stable&motion=stable&tailor=preview");
+@import url("./tokens.css?v=tailoring-tab-v1");
+@import url("./base.css?v=tailoring-tab-v1");
+@import url("./shell.css?v=tailoring-tab-v1");
+@import url("./legacy.css?v=tailoring-tab-v1");
+@import url("./workbench.css?v=tailoring-tab-v1");
